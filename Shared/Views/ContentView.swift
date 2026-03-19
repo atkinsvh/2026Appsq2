@@ -13,8 +13,104 @@ struct ContentView: View {
                 OnboardingView()
             } else if appState.isGuestMode {
                 GuestModeEntryView()
+            } else if appState.isGuestAccessOnly {
+                GuestAccessGateView()
             } else {
                 MainTabView()
+            }
+        }
+    }
+}
+
+
+struct GuestAccessGateView: View {
+    @EnvironmentObject var appState: AppState
+    @State private var invitationCode: String = ""
+    @State private var errorMessage: String?
+    @State private var isVerifying = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Spacer()
+
+                Image(systemName: "ticket.fill")
+                    .font(.system(size: 56))
+                    .foregroundColor(.pink)
+
+                VStack(spacing: 8) {
+                    Text("Guest Access")
+                        .font(.title2)
+                        .fontWeight(.bold)
+
+                    Text("Enter your verified invitation code to continue to your guest space.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                TextField("ABC123", text: $invitationCode)
+                    .font(.system(size: 34, weight: .bold, design: .monospaced))
+                    .multilineTextAlignment(.center)
+                    .padding()
+                    .background(Color(.systemBackground))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.pink.opacity(0.2), lineWidth: 1)
+                    )
+                    .onChange(of: invitationCode) { _, newValue in
+                        invitationCode = appState.normalizeInvitationCode(newValue)
+                    }
+
+                if let errorMessage, !errorMessage.isEmpty {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .multilineTextAlignment(.center)
+                }
+
+                Button(action: verifyCode) {
+                    HStack {
+                        if isVerifying {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                        Text(isVerifying ? "Verifying..." : "Open Guest Space")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(invitationCode.count == 6 && !isVerifying ? Color.pink : Color.gray)
+                    .foregroundColor(.white)
+                    .cornerRadius(14)
+                }
+                .disabled(invitationCode.count != 6 || isVerifying)
+
+                Spacer()
+            }
+            .padding(24)
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .navigationTitle("Guest")
+        }
+    }
+
+    private func verifyCode() {
+        errorMessage = nil
+        isVerifying = true
+
+        Task {
+            do {
+                let invitation = try await appState.verifyGuestInvitationCode(invitationCode)
+                await MainActor.run {
+                    appState.enterGuestMode(with: invitation)
+                    isVerifying = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isVerifying = false
+                }
             }
         }
     }
@@ -222,10 +318,9 @@ struct GuestHomeView: View {
             }
             
             Button(action: {
-                appState.exitGuestMode()
-                appState.onboardingCompleted = false
+                appState.returnToGuestCodeEntry()
             }) {
-                Label("Leave Guest Mode", systemImage: "rectangle.portrait.and.arrow.right")
+                Label("Use Another Code", systemImage: "arrow.counterclockwise")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding()

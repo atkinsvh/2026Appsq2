@@ -76,16 +76,16 @@ class CloudKitSyncService: ObservableObject {
     }
     
     private func coPlannerRecordID(for code: String) -> CKRecord.ID {
-        CKRecord.ID(recordName: "coplanner-\(code.uppercased())")
+        CKRecord.ID(recordName: "coplanner-\(InvitationCode.normalize(code))")
     }
     
     private func guestRSVPRecordID(for rsvp: GuestRSVP) -> CKRecord.ID {
         let guestKey = normalizedRecordKey(rsvp.guestName)
-        return CKRecord.ID(recordName: "guest-rsvp-\(rsvp.invitationCode.uppercased())-\(guestKey)")
+        return CKRecord.ID(recordName: "guest-rsvp-\(InvitationCode.normalize(rsvp.invitationCode))-\(guestKey)")
     }
     
     private func invitationCodeRecordID(for code: String) -> CKRecord.ID {
-        CKRecord.ID(recordName: "invitation-\(code.uppercased())")
+        CKRecord.ID(recordName: "invitation-\(InvitationCode.normalize(code))")
     }
     
     private func eventPhotoRecordID(for photoId: UUID) -> CKRecord.ID {
@@ -388,7 +388,8 @@ class CloudKitSyncService: ObservableObject {
     }
     
     func fetchGuestRSVPs(for invitationCode: String) async throws -> [GuestRSVP] {
-        let predicate = NSPredicate(format: "invitationCode == %@", invitationCode)
+        let cleanCode = InvitationCode.normalize(invitationCode)
+        let predicate = NSPredicate(format: "invitationCode == %@", cleanCode)
         let query = CKQuery(recordType: "GuestRSVP", predicate: predicate)
         let (matchResults, _) = try await publicDatabase.records(matching: query)
         
@@ -421,7 +422,7 @@ class CloudKitSyncService: ObservableObject {
     func upsertGuestRSVP(_ rsvp: GuestRSVP) async throws {
         let recordID = guestRSVPRecordID(for: rsvp)
         let record = try await fetchOrCreateRecord(recordType: "GuestRSVP", recordID: recordID, in: publicDatabase)
-        record["invitationCode"] = rsvp.invitationCode
+        record["invitationCode"] = InvitationCode.normalize(rsvp.invitationCode)
         record["guestName"] = rsvp.guestName
         record["rsvpStatus"] = rsvp.rsvpStatus.rawValue
         record["mealChoice"] = rsvp.mealChoice
@@ -435,9 +436,10 @@ class CloudKitSyncService: ObservableObject {
     // MARK: - Invitation Codes
     
     func saveInvitationCode(_ invitation: InvitationCode) async throws {
-        let recordID = invitationCodeRecordID(for: invitation.code)
+        let normalizedCode = InvitationCode.normalize(invitation.code)
+        let recordID = invitationCodeRecordID(for: normalizedCode)
         let record = try await fetchOrCreateRecord(recordType: "InvitationCode", recordID: recordID, in: publicDatabase)
-        record["code"] = invitation.code
+        record["code"] = normalizedCode
         record["weddingId"] = invitation.weddingId.uuidString
         record["coupleNames"] = invitation.coupleNames
         record["weddingDate"] = invitation.weddingDate as CKRecordValue
@@ -459,7 +461,8 @@ class CloudKitSyncService: ObservableObject {
             let record = try await publicDatabase.record(for: invitationCodeRecordID(for: code))
             return makeInvitationCode(from: record)
         } catch let error as CKError where error.code == .unknownItem {
-            let predicate = NSPredicate(format: "code == %@", code.uppercased())
+            let normalizedCode = InvitationCode.normalize(code)
+            let predicate = NSPredicate(format: "code == %@", normalizedCode)
             let query = CKQuery(recordType: "InvitationCode", predicate: predicate)
             let (matchResults, _) = try await publicDatabase.records(matching: query)
             
@@ -580,7 +583,7 @@ class CloudKitSyncService: ObservableObject {
     // MARK: - Co-Planner Management
     
     func generateCoPlannerCode(weddingId: UUID) async throws -> String {
-        let code = String((0..<6).map { _ in "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".randomElement()! })
+        let code = InvitationCode.makeCode()
         
         let record = CKRecord(recordType: "CoPlanner", recordID: coPlannerRecordID(for: code))
         record["code"] = code
@@ -596,7 +599,8 @@ class CloudKitSyncService: ObservableObject {
             let record = try await publicDatabase.record(for: coPlannerRecordID(for: code))
             return record["weddingId"] as? String
         } catch let error as CKError where error.code == .unknownItem {
-            let predicate = NSPredicate(format: "code == %@", code)
+            let normalizedCode = InvitationCode.normalize(code)
+            let predicate = NSPredicate(format: "code == %@", normalizedCode)
             let query = CKQuery(recordType: "CoPlanner", predicate: predicate)
             let (matchResults, _) = try await publicDatabase.records(matching: query)
             
@@ -614,6 +618,61 @@ class CloudKitSyncService: ObservableObject {
         }
     }
     
+    struct SchemaTestResult {
+        let status: String
+        let invitationCode: String
+    }
+
+    @discardableResult
+    func runSchemaPreparationTest(weddingId: UUID) async throws -> SchemaTestResult {
+        let details = WeddingDetails(
+            coupleNames: "Schema Test Wedding",
+            date: Date(),
+            location: "CloudKit Test Venue"
+        )
+        _ = try await saveWedding(details, weddingId: weddingId)
+
+        let invitation = InvitationCode(
+            code: InvitationCode.makeCode(),
+            weddingId: weddingId,
+            coupleNames: details.coupleNames,
+            date: details.date,
+            location: details.location,
+            guestName: "Schema Test Guest",
+            partySize: 2,
+            phoneNumber: "555-0000"
+        )
+        try await saveInvitationCode(invitation)
+
+        let guest = Guest(
+            name: invitation.guestName ?? "Schema Test Guest",
+            email: "schema@test.com",
+            phone: invitation.phoneNumber,
+            side: .both,
+            rsvpStatus: .attending,
+            mealChoice: "Chicken",
+            dietaryNotes: "None",
+            partySize: invitation.partySize,
+            invitationCode: invitation.code
+        )
+        try await saveGuests([guest], weddingId: weddingId)
+
+        let rsvp = GuestRSVP(
+            invitationCode: invitation.code,
+            guestName: guest.name,
+            rsvpStatus: .attending,
+            mealChoice: guest.mealChoice,
+            dietaryNotes: guest.dietaryNotes,
+            partySize: guest.partySize
+        )
+        try await upsertGuestRSVP(rsvp)
+
+        _ = try await fetchInvitationCode(invitation.code)
+        _ = try await fetchGuestRSVPs(for: invitation.code)
+
+        return SchemaTestResult(status: "Schema test completed", invitationCode: invitation.code)
+    }
+
     // MARK: - Full Sync
     
     func syncAllData(weddingId: UUID) async throws -> (
