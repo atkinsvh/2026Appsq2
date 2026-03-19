@@ -465,7 +465,7 @@ struct TestPanelView: View {
         testStatus.removeAll()
         
         Task {
-            // Test 1: Create Wedding
+            // Test 1: Create Wedding + normalized invitation verification baseline
             await MainActor.run { testStatus.append("Creating wedding...") }
             let weddingId = UUID()
             let weddingDetails = WeddingDetails(
@@ -475,11 +475,15 @@ struct TestPanelView: View {
             )
             do {
                 _ = try await appState.cloudKitSync.saveWedding(weddingDetails, weddingId: weddingId)
+                let schemaResult = try await appState.cloudKitSync.runSchemaPreparationTest(weddingId: weddingId)
                 appState.weddingId = weddingId
                 appState.weddingDetails = weddingDetails
-                await MainActor.run { testStatus.append("✅ Wedding saved to CloudKit") }
+                await MainActor.run {
+                    testStatus.append("✅ Wedding saved to CloudKit")
+                    testStatus.append("✅ Schema prep + invitation verification completed for code: \(schemaResult.invitationCode)")
+                }
             } catch {
-                await MainActor.run { testStatus.append("❌ Wedding failed: \(error.localizedDescription)") }
+                await MainActor.run { testStatus.append("❌ Wedding/schema prep failed: \(error.localizedDescription)") }
             }
             
             // Test 2: Generate Co-Planner Code

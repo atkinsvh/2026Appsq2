@@ -220,6 +220,13 @@ struct InvitationCode: Identifiable, Codable {
     var dietaryNotes: String?
     var partySize: Int
     var phoneNumber: String?
+
+    static func normalize(_ code: String) -> String {
+        let filtered = code
+            .uppercased()
+            .filter { $0.isLetter || $0.isNumber }
+        return String(filtered.prefix(6))
+    }
     
     static func makeCode() -> String {
         String((0..<6).map { _ in "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".randomElement()! })
@@ -236,7 +243,7 @@ struct InvitationCode: Identifiable, Codable {
          partySize: Int = 1,
          phoneNumber: String? = nil) {
         self.id = UUID()
-        self.code = code ?? InvitationCode.makeCode()
+        self.code = InvitationCode.normalize(code ?? InvitationCode.makeCode())
         self.weddingId = weddingId
         self.coupleNames = coupleNames
         self.weddingDate = date
@@ -262,7 +269,7 @@ struct GuestRSVP: Codable {
     var submittedAt: Date
     
     init(invitationCode: String, guestName: String, rsvpStatus: RSVPStatus, mealChoice: String? = nil, dietaryNotes: String? = nil, partySize: Int = 1) {
-        self.invitationCode = invitationCode
+        self.invitationCode = InvitationCode.normalize(invitationCode)
         self.guestName = guestName
         self.rsvpStatus = rsvpStatus
         self.mealChoice = mealChoice

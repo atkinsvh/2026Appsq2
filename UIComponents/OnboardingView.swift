@@ -410,7 +410,7 @@ struct OnboardingView: View {
                     .background(Color(.systemBackground))
                     .cornerRadius(12)
                     .onChange(of: invitationCode) { _, newValue in
-                        invitationCode = String(newValue.uppercased().prefix(6))
+                        invitationCode = appState.normalizeInvitationCode(newValue)
                     }
             }
             
@@ -623,75 +623,15 @@ struct OnboardingView: View {
                     }
                 }
             } else {
-                // Guest: validate locally first, then try CloudKit
-                if let invitationCodes = DataStore.shared.load([InvitationCode].self, from: "invitation_codes.json"),
-                   let invitation = invitationCodes.first(where: { $0.code == cleanCode }) {
-                    let rsvp = GuestRSVP(
-                        invitationCode: cleanCode,
-                        guestName: invitation.guestName ?? "",
-                        rsvpStatus: invitation.rsvpStatus ?? .noResponse,
-                        mealChoice: invitation.mealChoice,
-                        dietaryNotes: invitation.dietaryNotes,
-                        partySize: invitation.partySize
-                    )
+                do {
+                    let invitation = try await appState.verifyGuestInvitationCode(cleanCode)
                     await MainActor.run {
-                        appState.weddingDetails = WeddingDetails(
-                            coupleNames: invitation.coupleNames,
-                            date: invitation.weddingDate,
-                            location: invitation.weddingLocation
-                        )
-                        appState.enterGuestMode(with: cleanCode, rsvp: rsvp, weddingId: invitation.weddingId)
-                        appState.onboardingCompleted = true
+                        appState.enterGuestMode(with: invitation)
                     }
-                } else {
-                    do {
-                        if let invitation = try await appState.fetchInvitationCodeFromCloud(cleanCode) {
-                            var cachedInvitations = DataStore.shared.load([InvitationCode].self, from: "invitation_codes.json") ?? []
-                            if let index = cachedInvitations.firstIndex(where: { $0.code == invitation.code }) {
-                                cachedInvitations[index] = invitation
-                            } else {
-                                cachedInvitations.append(invitation)
-                            }
-                            _ = DataStore.shared.save(cachedInvitations, to: "invitation_codes.json")
-                            
-                            let rsvp = GuestRSVP(
-                                invitationCode: cleanCode,
-                                guestName: invitation.guestName ?? "",
-                                rsvpStatus: invitation.rsvpStatus ?? .noResponse,
-                                mealChoice: invitation.mealChoice,
-                                dietaryNotes: invitation.dietaryNotes,
-                                partySize: invitation.partySize
-                            )
-                            await MainActor.run {
-                                appState.weddingDetails = WeddingDetails(
-                                    coupleNames: invitation.coupleNames,
-                                    date: invitation.weddingDate,
-                                    location: invitation.weddingLocation
-                                )
-                                appState.enterGuestMode(with: cleanCode, rsvp: rsvp, weddingId: invitation.weddingId)
-                                appState.onboardingCompleted = true
-                            }
-                        } else {
-                            let rsvp = GuestRSVP(
-                                invitationCode: cleanCode,
-                                guestName: "",
-                                rsvpStatus: .noResponse
-                            )
-                            await MainActor.run {
-                                appState.enterGuestMode(with: cleanCode, rsvp: rsvp)
-                                appState.onboardingCompleted = true
-                            }
-                        }
-                    } catch {
-                        let rsvp = GuestRSVP(
-                            invitationCode: cleanCode,
-                            guestName: "",
-                            rsvpStatus: .noResponse
-                        )
-                        await MainActor.run {
-                            appState.enterGuestMode(with: cleanCode, rsvp: rsvp)
-                            appState.onboardingCompleted = true
-                        }
+                } catch {
+                    await MainActor.run {
+                        errorMessage = error.localizedDescription
+                        showError = true
                     }
                 }
             }

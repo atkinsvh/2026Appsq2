@@ -48,4 +48,14 @@ final class VowPlannerTests: XCTestCase {
         )
     }
 
+    func testInvitationCodeNormalizationRemovesWhitespaceAndSymbols() {
+        XCTAssertEqual(InvitationCode.normalize(" ab-c 12!34 "), "ABC123")
+    }
+
+    func testGuestRSVPNormalizesInvitationCodeOnInit() {
+        let rsvp = GuestRSVP(invitationCode: " test-9 ", guestName: "Guest", rsvpStatus: .attending)
+
+        XCTAssertEqual(rsvp.invitationCode, "TEST9")
+    }
+
 }
