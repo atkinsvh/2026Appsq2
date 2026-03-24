@@ -257,6 +257,38 @@ struct InvitationCode: Identifiable, Codable {
         self.partySize = partySize
         self.phoneNumber = phoneNumber
     }
+
+    init(
+        id: UUID,
+        code: String,
+        weddingId: UUID,
+        coupleNames: String,
+        weddingDate: Date,
+        weddingLocation: String,
+        createdAt: Date,
+        guestId: UUID?,
+        guestName: String?,
+        rsvpStatus: RSVPStatus?,
+        mealChoice: String?,
+        dietaryNotes: String?,
+        partySize: Int,
+        phoneNumber: String?
+    ) {
+        self.id = id
+        self.code = InvitationCode.normalize(code)
+        self.weddingId = weddingId
+        self.coupleNames = coupleNames
+        self.weddingDate = weddingDate
+        self.weddingLocation = weddingLocation
+        self.createdAt = createdAt
+        self.guestId = guestId
+        self.guestName = guestName
+        self.rsvpStatus = rsvpStatus
+        self.mealChoice = mealChoice
+        self.dietaryNotes = dietaryNotes
+        self.partySize = partySize
+        self.phoneNumber = phoneNumber
+    }
 }
 
 struct GuestRSVP: Codable {
@@ -268,14 +300,14 @@ struct GuestRSVP: Codable {
     var partySize: Int
     var submittedAt: Date
     
-    init(invitationCode: String, guestName: String, rsvpStatus: RSVPStatus, mealChoice: String? = nil, dietaryNotes: String? = nil, partySize: Int = 1) {
+    init(invitationCode: String, guestName: String, rsvpStatus: RSVPStatus, mealChoice: String? = nil, dietaryNotes: String? = nil, partySize: Int = 1, submittedAt: Date = Date()) {
         self.invitationCode = InvitationCode.normalize(invitationCode)
         self.guestName = guestName
         self.rsvpStatus = rsvpStatus
         self.mealChoice = mealChoice
         self.dietaryNotes = dietaryNotes
         self.partySize = partySize
-        self.submittedAt = Date()
+        self.submittedAt = submittedAt
     }
 }
 

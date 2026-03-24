@@ -134,6 +134,11 @@ class AppState: ObservableObject {
     }
 
     init() {
+        let migrationNotes = dataStore.migrateToLatestSchema()
+        for note in migrationNotes {
+            print("📦 Schema: \(note)")
+        }
+
         onboardingCompleted = UserDefaults.standard.bool(forKey: Self.onboardingCompletedKey)
         isCoPlanner = UserDefaults.standard.bool(forKey: Self.isCoPlannerKey)
         isGuestAccessOnly = UserDefaults.standard.bool(forKey: Self.isGuestAccessOnlyKey)
