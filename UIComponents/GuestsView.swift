@@ -12,6 +12,7 @@ struct GuestsView: View {
     @State private var invitePartySize: Int = 1
     @State private var invitePhoneNumber: String = ""
     @State private var inviteCode: String = ""
+    @State private var showStatusBreakdown: Bool = false
     
     var filteredGuests: [Guest] {
         var result = guests
@@ -100,10 +101,7 @@ struct GuestsView: View {
                 HStack {
                     HStack(spacing: 20) {
                         StatBox(title: "Total", value: "\(guestStats.total)", color: .blue)
-                        StatBox(title: "Attending", value: "\(guestStats.attending)", color: .green)
-                        StatBox(title: "Pending", value: "\(guestStats.pending)", color: .orange)
                         StatBox(title: "Party", value: "\(guestStats.totalPartySize)", color: .purple)
-                        StatBox(title: "Checked In", value: "\(checkedInCount)", color: .pink)
                     }
                     Image("RingSmall")
                         .resizable()
@@ -112,6 +110,21 @@ struct GuestsView: View {
                         .opacity(0.6)
                 }
                 .padding()
+
+                DisclosureGroup(isExpanded: $showStatusBreakdown) {
+                    HStack(spacing: 12) {
+                        StatBox(title: "Attending", value: "\(guestStats.attending)", color: .green)
+                        StatBox(title: "Pending", value: "\(guestStats.pending)", color: .orange)
+                        StatBox(title: "Checked In", value: "\(checkedInCount)", color: .pink)
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Text("Show RSVP & check-in breakdown")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
                 
                 Picker("Filter", selection: $filter) {
                     Text("All").tag(RSVPStatus?.none)

@@ -159,7 +159,8 @@ class CloudKitSyncService: ObservableObject {
         record["date"] = wedding.date as CKRecordValue
         record["location"] = wedding.location
         record["mealOptions"] = wedding.mealOptions as CKRecordValue
-        record["customQuestions"] = wedding.customQuestions as CKRecordValue
+        let questionsData = try JSONEncoder().encode(wedding.customQuestions)
+        record["customQuestions"] = questionsData as CKRecordValue
         
         do {
             let savedRecord = try await saveWithRetry {
@@ -185,7 +186,16 @@ class CloudKitSyncService: ObservableObject {
             let date = record["date"] as? Date ?? Date()
             let location = record["location"] as? String ?? ""
             let mealOptions = record["mealOptions"] as? [String]
-            let customQuestions = record["customQuestions"] as? [String]
+            let customQuestions: [RSVPQuestion]?
+            if let questionsData = record["customQuestions"] as? Data {
+                customQuestions = try? JSONDecoder().decode([RSVPQuestion].self, from: questionsData)
+            } else if let legacyQuestions = record["customQuestions"] as? [String] {
+                customQuestions = legacyQuestions.enumerated().map { index, title in
+                    RSVPQuestion(title: title, type: .text, displayOrder: index)
+                }
+            } else {
+                customQuestions = nil
+            }
             return WeddingDetails(
                 coupleNames: coupleNames,
                 date: date,
@@ -205,7 +215,16 @@ class CloudKitSyncService: ObservableObject {
                     let date = record["date"] as? Date ?? Date()
                     let location = record["location"] as? String ?? ""
                     let mealOptions = record["mealOptions"] as? [String]
-                    let customQuestions = record["customQuestions"] as? [String]
+                    let customQuestions: [RSVPQuestion]?
+                    if let questionsData = record["customQuestions"] as? Data {
+                        customQuestions = try? JSONDecoder().decode([RSVPQuestion].self, from: questionsData)
+                    } else if let legacyQuestions = record["customQuestions"] as? [String] {
+                        customQuestions = legacyQuestions.enumerated().map { index, title in
+                            RSVPQuestion(title: title, type: .text, displayOrder: index)
+                        }
+                    } else {
+                        customQuestions = nil
+                    }
                     return WeddingDetails(
                         coupleNames: coupleNames,
                         date: date,
@@ -408,7 +427,8 @@ class CloudKitSyncService: ObservableObject {
                     rsvpStatus: rsvpStatus,
                     mealChoice: record["mealChoice"] as? String,
                     dietaryNotes: record["dietaryNotes"] as? String,
-                    partySize: record["partySize"] as? Int ?? 1
+                    partySize: record["partySize"] as? Int ?? 1,
+                    songRequest: record["songRequest"] as? String
                 )
                 rsvps.append(rsvp)
             case .failure:
@@ -428,6 +448,7 @@ class CloudKitSyncService: ObservableObject {
         record["mealChoice"] = rsvp.mealChoice
         record["dietaryNotes"] = rsvp.dietaryNotes
         record["partySize"] = rsvp.partySize as CKRecordValue
+        record["songRequest"] = rsvp.songRequest
         record["submittedAt"] = rsvp.submittedAt as CKRecordValue
         
         _ = try await publicDatabase.save(record)

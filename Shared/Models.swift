@@ -6,6 +6,63 @@ enum RSVPStatus: String, Codable, CaseIterable {
     case attending, declined, noResponse
 }
 
+
+enum RSVPQuestionType: String, Codable {
+    case singleChoice
+    case multipleChoice
+    case text
+    case integer
+}
+
+struct RSVPQuestionOption: Codable, Identifiable, Hashable {
+    let id: UUID
+    let title: String
+    let value: String
+
+    init(id: UUID = UUID(), title: String, value: String? = nil) {
+        self.id = id
+        self.title = title
+        self.value = value ?? title
+    }
+}
+
+struct RSVPQuestion: Codable, Identifiable, Hashable {
+    let id: UUID
+    let title: String
+    let subtitle: String?
+    let type: RSVPQuestionType
+    let isRequired: Bool
+    let allowsCustomText: Bool
+    let placeholder: String?
+    let options: [RSVPQuestionOption]
+    let displayOrder: Int
+    let maxLength: Int?
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        subtitle: String? = nil,
+        type: RSVPQuestionType,
+        isRequired: Bool = false,
+        allowsCustomText: Bool = false,
+        placeholder: String? = nil,
+        options: [RSVPQuestionOption] = [],
+        displayOrder: Int,
+        maxLength: Int? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
+        self.type = type
+        self.isRequired = isRequired
+        self.allowsCustomText = allowsCustomText
+        self.placeholder = placeholder
+        self.options = options
+        self.displayOrder = displayOrder
+        self.maxLength = maxLength
+    }
+}
+
 enum GuestSide: String, Codable, CaseIterable {
     case partnerOne = "Partner One"
     case partnerTwo = "Partner Two"
@@ -169,22 +226,75 @@ struct WeddingDetails: Codable {
     var date: Date
     var location: String
     var mealOptions: [String]
-    var customQuestions: [String]
+    var customQuestions: [RSVPQuestion]
     
     static var defaultMealOptions: [String] {
         ["Chicken", "Beef", "Fish", "Vegetarian", "Vegan", "Other"]
     }
     
-    static var defaultCustomQuestions: [String] {
-        []
+    static var defaultCustomQuestions: [RSVPQuestion] {
+        RSVPQuestion.defaultRSVPBuilderQuestions
     }
     
-    init(coupleNames: String = "", date: Date = Date(), location: String = "", mealOptions: [String]? = nil, customQuestions: [String]? = nil) {
+    init(coupleNames: String = "", date: Date = Date(), location: String = "", mealOptions: [String]? = nil, customQuestions: [RSVPQuestion]? = nil) {
         self.coupleNames = coupleNames
         self.date = date
         self.location = location
         self.mealOptions = mealOptions ?? WeddingDetails.defaultMealOptions
-        self.customQuestions = customQuestions ?? []
+        self.customQuestions = customQuestions ?? WeddingDetails.defaultCustomQuestions
+    }
+}
+
+
+
+extension RSVPQuestion {
+    static var defaultRSVPBuilderQuestions: [RSVPQuestion] {
+        [
+            RSVPQuestion(
+                title: "Will you be attending the reception?",
+                subtitle: "Please choose one response.",
+                type: .singleChoice,
+                isRequired: true,
+                options: [
+                    RSVPQuestionOption(title: "Joyfully Accepts"),
+                    RSVPQuestionOption(title: "Respectfully Declines")
+                ],
+                displayOrder: 0
+            ),
+            RSVPQuestion(
+                title: "How many seats are you reserving?",
+                subtitle: "This is your guest count for the table.",
+                type: .integer,
+                isRequired: true,
+                placeholder: "Enter guest count",
+                displayOrder: 1
+            ),
+            RSVPQuestion(
+                title: "Please indicate any dietary restrictions",
+                subtitle: "Select all that apply.",
+                type: .multipleChoice,
+                isRequired: false,
+                allowsCustomText: true,
+                placeholder: "Other dietary notes",
+                options: [
+                    RSVPQuestionOption(title: "Vegetarian"),
+                    RSVPQuestionOption(title: "Vegan"),
+                    RSVPQuestionOption(title: "Gluten-Free"),
+                    RSVPQuestionOption(title: "Dairy-Free"),
+                    RSVPQuestionOption(title: "Nut Allergy")
+                ],
+                displayOrder: 2
+            ),
+            RSVPQuestion(
+                title: "What song will get you on the dance floor?",
+                subtitle: "Song requests cannot include links.",
+                type: .text,
+                isRequired: false,
+                placeholder: "Enter a song title or artist",
+                displayOrder: 3,
+                maxLength: 100
+            )
+        ]
     }
 }
 
@@ -266,15 +376,17 @@ struct GuestRSVP: Codable {
     var mealChoice: String?
     var dietaryNotes: String?
     var partySize: Int
+    var songRequest: String?
     var submittedAt: Date
     
-    init(invitationCode: String, guestName: String, rsvpStatus: RSVPStatus, mealChoice: String? = nil, dietaryNotes: String? = nil, partySize: Int = 1) {
+    init(invitationCode: String, guestName: String, rsvpStatus: RSVPStatus, mealChoice: String? = nil, dietaryNotes: String? = nil, partySize: Int = 1, songRequest: String? = nil) {
         self.invitationCode = InvitationCode.normalize(invitationCode)
         self.guestName = guestName
         self.rsvpStatus = rsvpStatus
         self.mealChoice = mealChoice
         self.dietaryNotes = dietaryNotes
         self.partySize = partySize
+        self.songRequest = songRequest
         self.submittedAt = Date()
     }
 }
