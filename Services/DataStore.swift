@@ -44,6 +44,19 @@ class DataStore: ObservableObject {
     private let backupURL: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private static let schemaMetadataFile = "schema_metadata.json"
+
+    struct SchemaMetadata: Codable {
+        var version: Int
+        var updatedAt: Date
+    }
+
+    enum LocalSchemaVersion: Int, CaseIterable {
+        case v1 = 1
+        case v2 = 2
+
+        static var latest: LocalSchemaVersion { .v2 }
+    }
 
     // MARK: - Initialization
     private init() {
@@ -222,5 +235,121 @@ class DataStore: ObservableObject {
         } catch {
             return []
         }
+    }
+
+    // MARK: - Schema Versioning + Migration
+
+    func migrateToLatestSchema() -> [String] {
+        var notes: [String] = []
+        let current = currentSchemaVersion()
+        let latest = LocalSchemaVersion.latest.rawValue
+
+        guard current < latest else {
+            return ["Schema already at v\(latest)"]
+        }
+
+        for version in (current + 1)...latest {
+            switch version {
+            case LocalSchemaVersion.v2.rawValue:
+                notes.append(contentsOf: migrateV1toV2())
+            default:
+                notes.append("No migration runner for v\(version)")
+            }
+        }
+
+        setSchemaVersion(latest)
+        notes.append("Schema migration complete: v\(current) -> v\(latest)")
+        return notes
+    }
+
+    func currentSchemaVersion() -> Int {
+        load(SchemaMetadata.self, from: Self.schemaMetadataFile)?.version ?? LocalSchemaVersion.v1.rawValue
+    }
+
+    private func setSchemaVersion(_ version: Int) {
+        let metadata = SchemaMetadata(version: version, updatedAt: Date())
+        _ = save(metadata, to: Self.schemaMetadataFile)
+    }
+
+    private func migrateV1toV2() -> [String] {
+        var notes: [String] = ["Running migration v1 -> v2"]
+
+        if var guests = load([Guest].self, from: "guests.json") {
+            var changedCount = 0
+            guests = guests.map { guest in
+                var updated = guest
+                let normalizedCode = guest.invitationCode.map(InvitationCode.normalize)
+                if updated.invitationCode != normalizedCode {
+                    updated.invitationCode = normalizedCode
+                    changedCount += 1
+                }
+                if updated.partySize < 1 {
+                    updated.partySize = 1
+                    changedCount += 1
+                }
+                return updated
+            }
+            _ = save(guests, to: "guests.json")
+            notes.append("Guests normalized: \(changedCount) updates")
+        } else {
+            notes.append("Guests file not found; skipped")
+        }
+
+        if var invitations = load([InvitationCode].self, from: "invitation_codes.json") {
+            var changedCount = 0
+            invitations = invitations.map { invitation in
+                let normalized = InvitationCode.normalize(invitation.code)
+                let normalizedPartySize = max(invitation.partySize, 1)
+                if normalized != invitation.code || normalizedPartySize != invitation.partySize {
+                    changedCount += 1
+                }
+                return InvitationCode(
+                    id: invitation.id,
+                    code: normalized,
+                    weddingId: invitation.weddingId,
+                    coupleNames: invitation.coupleNames,
+                    weddingDate: invitation.weddingDate,
+                    weddingLocation: invitation.weddingLocation,
+                    createdAt: invitation.createdAt,
+                    guestId: invitation.guestId,
+                    guestName: invitation.guestName,
+                    rsvpStatus: invitation.rsvpStatus,
+                    mealChoice: invitation.mealChoice,
+                    dietaryNotes: invitation.dietaryNotes,
+                    partySize: normalizedPartySize,
+                    phoneNumber: invitation.phoneNumber
+                )
+            }
+            _ = save(invitations, to: "invitation_codes.json")
+            notes.append("Invitation codes normalized: \(changedCount) updates")
+        } else {
+            notes.append("Invitation codes file not found; skipped")
+        }
+
+        if var rsvps = load([GuestRSVP].self, from: "all_guest_rsvps.json") {
+            var changedCount = 0
+            rsvps = rsvps.map { rsvp in
+                let normalizedCode = InvitationCode.normalize(rsvp.invitationCode)
+                let normalizedPartySize = max(rsvp.partySize, 1)
+                if normalizedCode != rsvp.invitationCode || normalizedPartySize != rsvp.partySize {
+                    changedCount += 1
+                }
+                return GuestRSVP(
+                    invitationCode: normalizedCode,
+                    guestName: rsvp.guestName,
+                    rsvpStatus: rsvp.rsvpStatus,
+                    mealChoice: rsvp.mealChoice,
+                    dietaryNotes: rsvp.dietaryNotes,
+                    partySize: normalizedPartySize,
+                    submittedAt: rsvp.submittedAt
+                )
+            }
+            _ = save(rsvps, to: "all_guest_rsvps.json")
+            notes.append("RSVPs normalized: \(changedCount) updates")
+        } else {
+            notes.append("RSVP file not found; skipped")
+        }
+
+        return notes
     }
 }
