@@ -12,12 +12,11 @@ struct SequentialGuestRSVPView: View {
     @State private var dietaryNotes: String = ""
     @State private var partySize: Int = 1
     @State private var familyNote: String = "" // For declined guests
+    @State private var songRequest: String = ""
     @State private var showingSuccess = false
     
     // Progress tracking
-    private var totalStepsForAttending: Int {
-        appState.weddingDetails.customQuestions.isEmpty ? 6 : 6 + appState.weddingDetails.customQuestions.count
-    }
+    private let totalStepsForAttending = 7
     private let totalStepsForDeclined = 4
     
     // Meal options - from wedding details or defaults
@@ -281,6 +280,37 @@ struct SequentialGuestRSVPView: View {
             }
             
         case 5:
+            if rsvpStatus == .attending {
+                VStack(spacing: 16) {
+                    Text("Music Request")
+                        .font(.title2)
+                        .fontWeight(.bold)
+
+                    Text("Optional: add one song title or artist (max 100 characters, no links).")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    TextField("Enter a song title or artist", text: $songRequest)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                        .onChange(of: songRequest) { _, newValue in
+                            let trimmed = String(newValue.prefix(100))
+                            if trimmed != newValue {
+                                songRequest = trimmed
+                            }
+                        }
+
+                    Text("\(songRequest.count)/100")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+        case 6:
             // Review for attending guests
             reviewContent
             
@@ -305,6 +335,9 @@ struct SequentialGuestRSVPView: View {
                     reviewRow("Party Size", "\(partySize)")
                     if !dietaryNotes.isEmpty {
                         reviewRow("Notes", dietaryNotes)
+                    }
+                    if !songRequest.isEmpty {
+                        reviewRow("Song Request", songRequest)
                     }
                 } else if rsvpStatus == .declined {
                     if !familyNote.isEmpty {
@@ -378,7 +411,8 @@ struct SequentialGuestRSVPView: View {
         case 2: return rsvpStatus == .attending ? !mealChoice.isEmpty : true
         case 3: return true // Always proceed (declined goes to review, attending continues)
         case 4: return true // Dietary notes are optional
-        case 5: return true // Always submit review
+        case 5: return !containsLink(songRequest)
+        case 6: return true // Always submit review
         default: return false
         }
     }
@@ -393,7 +427,8 @@ struct SequentialGuestRSVPView: View {
             rsvpStatus: rsvpStatus,
             mealChoice: rsvpStatus == .attending ? (mealChoice.isEmpty ? nil : mealChoice) : nil,
             dietaryNotes: dietaryNotes.isEmpty ? nil : dietaryNotes,
-            partySize: partySize
+            partySize: partySize,
+            songRequest: songRequest.isEmpty ? nil : songRequest
         )
         
         // Update in AppState (which also syncs to CloudKit)
@@ -428,6 +463,14 @@ struct SequentialGuestRSVPView: View {
         if partySize == 1 {
             partySize = existingRSVP.partySize
         }
+        if songRequest.isEmpty {
+            songRequest = existingRSVP.songRequest ?? ""
+        }
+    }
+
+    private func containsLink(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+        return lowered.contains("http://") || lowered.contains("https://") || lowered.contains("www.")
     }
 }
 
