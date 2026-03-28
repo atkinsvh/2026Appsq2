@@ -500,6 +500,26 @@ class CloudKitSyncService: ObservableObject {
             throw error
         }
     }
+
+    func fetchInvitationCodes(weddingId: UUID) async throws -> [InvitationCode] {
+        let predicate = NSPredicate(format: "weddingId == %@", weddingId.uuidString)
+        let query = CKQuery(recordType: "InvitationCode", predicate: predicate)
+        let (matchResults, _) = try await publicDatabase.records(matching: query)
+
+        var invitations: [InvitationCode] = []
+        for (_, result) in matchResults {
+            switch result {
+            case .success(let record):
+                if let invitation = makeInvitationCode(from: record) {
+                    invitations.append(invitation)
+                }
+            case .failure:
+                continue
+            }
+        }
+
+        return invitations.sorted { $0.createdAt < $1.createdAt }
+    }
     
     private func makeInvitationCode(from record: CKRecord) -> InvitationCode? {
         guard let code = record["code"] as? String,
