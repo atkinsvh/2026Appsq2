@@ -245,6 +245,60 @@ struct WeddingDetails: Codable {
     }
 }
 
+enum WeddingRole: String, Codable, CaseIterable {
+    case host
+    case coplanner
+}
+
+struct UserWeddingMembership: Identifiable, Codable, Hashable {
+    let id: UUID
+    let userId: UUID
+    let weddingId: UUID
+    var role: WeddingRole
+    var coupleNames: String
+    var weddingDate: Date
+    var weddingLocation: String
+    var joinedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        userId: UUID,
+        weddingId: UUID,
+        role: WeddingRole,
+        coupleNames: String,
+        weddingDate: Date,
+        weddingLocation: String,
+        joinedAt: Date = Date()
+    ) {
+        self.id = id
+        self.userId = userId
+        self.weddingId = weddingId
+        self.role = role
+        self.coupleNames = coupleNames
+        self.weddingDate = weddingDate
+        self.weddingLocation = weddingLocation
+        self.joinedAt = joinedAt
+    }
+}
+
+struct WeddingSummary: Identifiable, Codable, Hashable {
+    let id: UUID
+    let weddingId: UUID
+    let role: WeddingRole
+    let coupleNames: String
+    let weddingDate: Date
+    let weddingLocation: String
+
+    init(membership: UserWeddingMembership) {
+        self.id = membership.weddingId
+        self.weddingId = membership.weddingId
+        self.role = membership.role
+        self.coupleNames = membership.coupleNames
+        self.weddingDate = membership.weddingDate
+        self.weddingLocation = membership.weddingLocation
+    }
+}
+
 
 
 extension RSVPQuestion {

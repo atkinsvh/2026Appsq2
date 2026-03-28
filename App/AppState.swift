@@ -70,6 +70,7 @@ enum GuestCodeValidationError: LocalizedError {
 class AppState: ObservableObject {
     private static let onboardingCompletedKey = "AppState.onboardingCompleted"
     private static let weddingIdKey = "AppState.weddingId"
+    private static let userIdKey = "AppState.userId"
     private static let isCoPlannerKey = "AppState.isCoPlanner"
     private static let guestWeddingIdKey = "AppState.guestWeddingId"
     private static let isGuestAccessOnlyKey = "AppState.isGuestAccessOnly"
@@ -128,12 +129,24 @@ class AppState: ObservableObject {
             UserDefaults.standard.set(weddingId?.uuidString, forKey: Self.weddingIdKey)
         }
     }
+    @Published var userId: UUID {
+        didSet {
+            UserDefaults.standard.set(userId.uuidString, forKey: Self.userIdKey)
+        }
+    }
+    @Published var weddingMemberships: [WeddingSummary] = []
 
     private var activeWeddingId: UUID? {
         weddingId ?? guestWeddingId
     }
 
     init() {
+        if let savedUserId = UserDefaults.standard.string(forKey: Self.userIdKey),
+           let parsed = UUID(uuidString: savedUserId) {
+            userId = parsed
+        } else {
+            userId = UUID()
+        }
         onboardingCompleted = UserDefaults.standard.bool(forKey: Self.onboardingCompletedKey)
         isCoPlanner = UserDefaults.standard.bool(forKey: Self.isCoPlannerKey)
         isGuestAccessOnly = UserDefaults.standard.bool(forKey: Self.isGuestAccessOnlyKey)
@@ -151,6 +164,8 @@ class AppState: ObservableObject {
                 await syncFromCloudKit()
             }
         }
+
+        fetchWeddingsForCurrentUser()
 
         Task {
             await flushPendingGuestSyncOperations()
@@ -479,6 +494,13 @@ class AppState: ObservableObject {
     func generateCoPlannerCode() async throws -> String {
         if weddingId == nil {
             self.weddingId = UUID()
+            if let weddingId = weddingId {
+                registerWeddingMembership(
+                    weddingId: weddingId,
+                    role: .host,
+                    details: weddingDetails
+                )
+            }
         }
         guard let weddingId = self.weddingId else {
             throw NSError(domain: "AppState", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to generate wedding ID"])
@@ -508,8 +530,74 @@ class AppState: ObservableObject {
         _ = dataStore.save(guests, to: Self.guestsFile)
         _ = dataStore.save(budget, to: Self.budgetFile)
         _ = dataStore.save(vendors, to: Self.vendorsFile)
+        registerWeddingMembership(
+            weddingId: weddingId,
+            role: .coplanner,
+            details: self.weddingDetails
+        )
 
         return true
+    }
+
+    // MARK: - User <> Wedding Memberships
+
+    func fetchWeddingsForCurrentUser() {
+        APIClient.shared.fetchWeddings(for: userId) { [weak self] weddings in
+            guard let self else { return }
+            Task { @MainActor in
+                self.weddingMemberships = weddings
+                if self.weddingId == nil, let first = weddings.first {
+                    await self.switchWedding(to: first.weddingId)
+                }
+            }
+        }
+    }
+
+    @discardableResult
+    func registerWeddingMembership(
+        weddingId: UUID,
+        role: WeddingRole,
+        details: WeddingDetails
+    ) -> UserWeddingMembership {
+        let fileName = membershipFileName(for: userId)
+        var memberships = dataStore.load([UserWeddingMembership].self, from: fileName) ?? []
+
+        let entry = UserWeddingMembership(
+            userId: userId,
+            weddingId: weddingId,
+            role: role,
+            coupleNames: details.coupleNames,
+            weddingDate: details.date,
+            weddingLocation: details.location
+        )
+
+        if let index = memberships.firstIndex(where: { $0.weddingId == weddingId }) {
+            memberships[index] = entry
+        } else {
+            memberships.append(entry)
+        }
+
+        _ = dataStore.save(memberships, to: fileName)
+        fetchWeddingsForCurrentUser()
+        return entry
+    }
+
+    func updateCurrentWeddingMembership(with details: WeddingDetails) {
+        guard let weddingId else { return }
+        let role: WeddingRole = isCoPlanner ? .coplanner : .host
+        registerWeddingMembership(weddingId: weddingId, role: role, details: details)
+    }
+
+    func switchWedding(to selectedWeddingId: UUID) async {
+        weddingId = selectedWeddingId
+        if let selected = weddingMemberships.first(where: { $0.weddingId == selectedWeddingId }) {
+            isCoPlanner = selected.role == .coplanner
+        }
+        await syncFromCloudKit()
+    }
+
+    private func membershipFileName(for userId: UUID) -> String {
+        "user_wedding_memberships_\(userId.uuidString.lowercased()).json"
     }
 
     func saveGuestToCloud(_ guest: Guest) async throws {

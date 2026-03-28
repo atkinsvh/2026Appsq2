@@ -14,4 +14,15 @@ class APIClient {
         // Post to API
         print("Posted RSVP for \(guest.name)")
     }
+
+    /// Fetch all weddings a user can access (host and/or co-planner).
+    /// This mock implementation reads memberships from local storage.
+    func fetchWeddings(for userId: UUID, completion: @escaping ([WeddingSummary]) -> Void) {
+        let fileName = "user_wedding_memberships_\(userId.uuidString.lowercased()).json"
+        let memberships = DataStore.shared.load([UserWeddingMembership].self, from: fileName) ?? []
+        let summaries = memberships
+            .sorted(by: { $0.weddingDate < $1.weddingDate })
+            .map(WeddingSummary.init(membership:))
+        completion(summaries)
+    }
 }

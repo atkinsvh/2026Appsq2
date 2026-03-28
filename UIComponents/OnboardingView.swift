@@ -534,6 +534,11 @@ struct OnboardingView: View {
         // Set weddingId SYNCHRONOUSLY before proceeding
         let weddingId = appState.weddingId ?? UUID()
         appState.weddingId = weddingId
+        _ = appState.registerWeddingMembership(
+            weddingId: weddingId,
+            role: .host,
+            details: weddingDetails
+        )
         
         // Sync to CloudKit (async)
         Task {
@@ -610,6 +615,7 @@ struct OnboardingView: View {
                     let success = try await appState.joinAsCoPlanner(with: cleanCode)
                     await MainActor.run {
                         if success {
+                            appState.fetchWeddingsForCurrentUser()
                             withAnimation { currentStep = .todoList }
                         } else {
                             errorMessage = "Invalid co-planner code"
