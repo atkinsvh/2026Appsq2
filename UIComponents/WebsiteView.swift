@@ -11,6 +11,8 @@ struct WebsiteView: View {
     @State private var showingPreview = false
     @State private var showingShare = false
     @State private var selectedTemplate: WebsiteTemplate = .classic
+    @State private var generatedWebsiteURL: URL?
+    @State private var generationErrorMessage: String?
     
     var body: some View {
         NavigationStack {
@@ -31,7 +33,7 @@ struct WebsiteView: View {
                 WebsitePreviewSheet(html: generatedHTML)
             }
             .sheet(isPresented: $showingShare) {
-                if let url = getGeneratedURL() {
+                if let url = generatedWebsiteURL {
                     ShareSheet(items: [url])
                 }
             }
@@ -177,6 +179,14 @@ struct WebsiteView: View {
                     .cornerRadius(12)
                 }
             }
+
+            if let generationErrorMessage {
+                Text(generationErrorMessage)
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
     
@@ -188,41 +198,48 @@ struct WebsiteView: View {
     
     private func generateWebsite() {
         isGenerating = true
-        
+        generationErrorMessage = nil
+
         let guests = appState.dataStore.load([Guest].self, from: "guests.json") ?? []
         let attendingGuests = guests.filter { $0.rsvpStatus == .attending }
-        
-        let html = WebsiteGenerator.shared.generateHTML(
+
+        let request = WebsiteGenerationRequest(
             coupleNames: appState.weddingDetails.coupleNames,
             date: weddingDateText,
             location: appState.weddingDetails.location,
             attendingGuests: attendingGuests,
             template: selectedTemplate
         )
-        
-        generatedHTML = html
+
+        let result = WebsiteService.shared.generateWebsite(request: request)
+        switch result {
+        case .success(let generatedWebsite):
+            generatedHTML = generatedWebsite.html
+            generatedWebsiteURL = generatedWebsite.fileURL
+        case .failure(let error):
+            generationErrorMessage = error.localizedDescription
+        }
+
         isGenerating = false
-        
-        // Save to DataStore
-        _ = appState.dataStore.save(generatedHTML, to: "wedding_website.html")
     }
-    
+
     private func loadSavedWebsite() {
-        if let html = appState.dataStore.load(String.self, from: "wedding_website.html") {
-            generatedHTML = html
-        }
-    }
-    
-    private func getGeneratedURL() -> URL? {
-        // Need to expose documentsURL from DataStore
-        // For now, use the file path directly
         let fileManager = FileManager.default
-        if let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
-            return documentsURL.appendingPathComponent("wedding_website.html")
+        guard let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return
         }
-        return nil
+
+        let url = documentsURL.appendingPathComponent("wedding_website.html")
+        guard let data = try? Data(contentsOf: url),
+              let html = String(data: data, encoding: .utf8) else {
+            return
+        }
+
+        generatedHTML = html
+        generatedWebsiteURL = url
     }
 }
+
 
 struct TemplateCard: View {
     let name: String

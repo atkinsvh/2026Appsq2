@@ -1,99 +1,83 @@
 # VowPlanner Code Flow Explanation
 
-## Current Flow Architecture
+_Last verified on March 25, 2026._
 
-### 1. App Entry (VowPlannerApp.swift)
-- Initializes `AppState`
-- Sets up ContentView as main entry
+## Current Runtime Flow
 
-### 2. ContentView (Entry Point)
+### 1. App Entry
+- `VowPlannerApp` creates a single `AppState` and injects it into `ContentView`. (`App/VowPlannerApp.swift`)
+
+### 2. Root Routing (`Shared/Views/ContentView.swift`)
+The app chooses one of four top-level paths:
+
 ```swift
 if !appState.onboardingCompleted {
-    OnboardingView()      // First-time users
+    OnboardingView()
 } else if appState.isGuestMode {
-    GuestModeEntryView()  // Guests who entered code
+    GuestModeEntryView()
+} else if appState.isGuestAccessOnly {
+    GuestAccessGateView()
 } else {
-    MainTabView()         // Hosts (planning a wedding)
+    MainTabView()
 }
 ```
 
-### 3. Onboarding Flow (OnboardingView.swift)
+### 3. Host Entry Path
+1. User completes onboarding as host/co-planner.
+2. `onboardingCompleted = true`, `isGuestMode = false`.
+3. If `isGuestAccessOnly == false`, app routes to `MainTabView`.
+4. Host/co-planner data sync runs through `AppState.syncFromCloudKit()` when a host wedding ID is available.
 
-#### Steps:
-1. **Welcome** → "Get Started"
-2. **Role Selection** → Choose Host or Guest
-   - Host → Wedding Details
-   - Guest → Enter Invitation Code
-3. **Wedding Details** (Host) → Couple names, date, location
-4. **Invite Partner** (Host) → Generate code or skip
-5. **Wedding Phases** → Overview of timeline
-6. **Complete** → Sets `appState.onboardingCompleted = true`
+### 4. Guest Entry Path
+1. Guest enters invitation code in onboarding or `GuestAccessGateView`.
+2. `AppState.verifyGuestInvitationCode(_:)` validates code via cache + CloudKit lookup.
+3. `AppState.enterGuestMode(with:)` sets guest context (`isGuestMode = true`, `isGuestAccessOnly = true`, `onboardingCompleted = true`) and hydrates wedding details.
+4. `GuestModeEntryView` routes to:
+   - `SequentialGuestRSVPView` when RSVP is still `.noResponse`
+   - `GuestHomeView` after RSVP is submitted.
 
-### 4. Host Flow (MainTabView)
-- DashboardView
-- GuestsView (with code generation)
-- BudgetView
-- VendorsView
-- TimelineView
-- WebsiteView
+### 5. RSVP Behavior (`App/AppState.swift`)
+- `submitGuestRSVP(_:)` persists the guest RSVP locally, updates/creates matching guest records, updates invitation records, and attempts CloudKit sync.
+- Failed guest/invitation/RSVP sync operations are queued in pending sync storage and retried.
 
-### 5. Guest Flow (GuestModeEntryView)
-- RSVPFormView (if no RSVP submitted)
-- GuestThankYouView (after RSVP)
+## Data Layer (Current)
 
-## Key Files & Their Roles
+### DataStore (replaces old StorageManager references)
+- Unified persistence service: `Services/DataStore.swift`.
+- Handles Codable save/load, atomic writes, backups, restore-from-backup, and file metadata helpers.
+- Core app files managed through `AppState` constants (e.g., `wedding_details.json`, `guests.json`, `invitation_codes.json`, `all_guest_rsvps.json`).
+
+## Flow Diagram
+
+```text
+VowPlannerApp
+  └─ ContentView
+      ├─ onboardingCompleted == false → OnboardingView
+      ├─ isGuestMode == true          → GuestModeEntryView
+      ├─ isGuestAccessOnly == true    → GuestAccessGateView
+      └─ otherwise                     → MainTabView
+```
+
+```text
+Guest code verification
+  GuestAccessGateView / Onboarding guest step
+      ↓
+AppState.verifyGuestInvitationCode
+      ↓
+AppState.enterGuestMode(with: invitation)
+      ↓
+GuestModeEntryView
+  ├─ RSVP missing/noResponse → SequentialGuestRSVPView
+  └─ RSVP complete           → GuestHomeView
+```
+
+## Key Files
 
 | File | Purpose |
 |------|---------|
-| VowPlannerApp.swift | App entry, initializes services |
-| ContentView.swift | Route between Onboarding/Guest/Host |
-| OnboardingView.swift | New user setup (5 steps) |
-| AppState.swift | Central state management |
-| GuestsView.swift | Guest list + code generation |
-| DashboardView.swift | Quick stats + actions |
-| BudgetView.swift | Budget categories + editing |
+| `Shared/Views/ContentView.swift` | Top-level routing including guest access gate |
+| `App/AppState.swift` | State coordination, guest/host mode transitions, RSVP persistence/sync |
+| `Services/DataStore.swift` | Local persistence + backups + recovery |
+| `UIComponents/OnboardingView.swift` | Role-driven onboarding and guest/partner entry steps |
+| `UIComponents/WebsiteView.swift` | Website generation UI and generated output handling |
 
-## How to Add New Features
-
-### Adding a New Tab
-1. Create view in `UIComponents/`
-2. Add to `HomeNavigationView` in ContentView.swift
-3. Add to TabView with icon and label
-
-### Adding to Guest RSVP
-1. Update `RSVPFormView` in ContentView.swift
-2. Add state variables for new fields
-3. Update `GuestRSVP` model in Models.swift
-4. Update `submitGuestRSVP()` in AppState.swift
-
-### Adding to Host Dashboard
-1. Update `DashboardView.swift`
-2. Add new cards or sections
-3. Use `@State` for local data
-4. Use `StorageManager` for persistence
-
-## Data Flow
-
-```
-Onboarding
-    ↓ (sets weddingDetails)
-AppState.weddingDetails
-    ↓ (used by all views)
-GuestsView, BudgetView, etc.
-    ↓ (save/load via)
-StorageManager
-    ↓ (JSON files in documents folder)
-```
-
-## Adding Invitation Code System
-
-Current implementation:
-- Hosts generate code from Guests tab
-- Code is sent to guest via iMessage/Email
-- Guest enters code in app to RSVP
-
-To enhance:
-1. Add "Generate Guest Code" button to each guest row
-2. Code is saved in `invitation_codes.json`
-3. Guest enters code in onboarding invite step
-4. App stores code in `UserDefaults` for persistence
