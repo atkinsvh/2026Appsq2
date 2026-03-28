@@ -391,7 +391,7 @@ struct OnboardingView: View {
                 .fontWeight(.bold)
             
             Text(userRole == .coplanner ? 
-                 "Enter your co-planner code to access the wedding" :
+                 "Enter a co-planner code to access a wedding. You can add and switch between multiple weddings from your profile." :
                  "Enter the invitation code to RSVP to the wedding")
                 .font(.subheadline)
                 .foregroundColor(.secondary)

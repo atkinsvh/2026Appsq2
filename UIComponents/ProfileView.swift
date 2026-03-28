@@ -13,6 +13,8 @@ struct ProfileView: View {
     @State private var lastTapTime: TimeInterval = 0
     @State private var tapCount = 0
     @State private var showingTestPanel = false
+    @State private var switchingWeddingId: UUID?
+    @State private var weddingSwitchError: String?
     
     init(showHome: Binding<Bool> = .constant(false)) {
         self._showHome = showHome
@@ -123,6 +125,41 @@ struct ProfileView: View {
                 Section("Invitation Codes") {
                     NavigationLink(destination: InvitationCodesView()) {
                         Label("Manage Codes", systemImage: "qrcode")
+                    }
+                }
+
+                if appState.isCoPlanner, !appState.coPlannerWeddingIds.isEmpty {
+                    Section("Co-Planner Weddings") {
+                        ForEach(appState.coPlannerWeddingIds, id: \.self) { weddingId in
+                            Button(action: {
+                                switchWedding(weddingId)
+                            }) {
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(weddingDisplayName(for: weddingId))
+                                            .foregroundColor(.primary)
+                                        Text(weddingId.uuidString.prefix(8))
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if switchingWeddingId == weddingId {
+                                        ProgressView()
+                                    } else if appState.weddingId == weddingId {
+                                        Label("Active", systemImage: "checkmark.circle.fill")
+                                            .font(.caption)
+                                            .foregroundColor(.green)
+                                    }
+                                }
+                            }
+                            .disabled(switchingWeddingId != nil)
+                        }
+
+                        if let weddingSwitchError, !weddingSwitchError.isEmpty {
+                            Text(weddingSwitchError)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
                     }
                 }
                 
@@ -291,6 +328,7 @@ struct ProfileView: View {
         appState.exitGuestMode()
         appState.weddingId = nil
         appState.isCoPlanner = false
+        appState.coPlannerWeddingIds = []
         appState.onboardingCompleted = false
     }
     
@@ -315,8 +353,42 @@ struct ProfileView: View {
         appState.weddingDetails = WeddingDetails(coupleNames: "", date: Date(), location: "")
         appState.weddingId = nil
         appState.isCoPlanner = false
+        appState.coPlannerWeddingIds = []
         appState.exitGuestMode()
         appState.onboardingCompleted = false
+    }
+
+    private func switchWedding(_ weddingId: UUID) {
+        guard switchingWeddingId == nil else { return }
+        switchingWeddingId = weddingId
+        weddingSwitchError = nil
+
+        Task {
+            do {
+                try await appState.switchToCoPlannerWedding(weddingId)
+                await MainActor.run {
+                    switchingWeddingId = nil
+                }
+            } catch {
+                await MainActor.run {
+                    weddingSwitchError = "Could not open that wedding right now."
+                    switchingWeddingId = nil
+                }
+            }
+        }
+    }
+
+    private func weddingDisplayName(for weddingId: UUID) -> String {
+        if appState.weddingId == weddingId, !appState.weddingDetails.coupleNames.isEmpty {
+            return appState.weddingDetails.coupleNames
+        }
+
+        if let invitationCodes = DataStore.shared.load([InvitationCode].self, from: "invitation_codes.json"),
+           let invitation = invitationCodes.first(where: { $0.weddingId == weddingId }) {
+            return invitation.coupleNames
+        }
+
+        return "Wedding \(weddingId.uuidString.prefix(6))"
     }
 }
 

@@ -71,6 +71,7 @@ class AppState: ObservableObject {
     private static let onboardingCompletedKey = "AppState.onboardingCompleted"
     private static let weddingIdKey = "AppState.weddingId"
     private static let isCoPlannerKey = "AppState.isCoPlanner"
+    private static let coPlannerWeddingIdsKey = "AppState.coPlannerWeddingIds"
     private static let guestWeddingIdKey = "AppState.guestWeddingId"
     private static let isGuestAccessOnlyKey = "AppState.isGuestAccessOnly"
     private static let guestModeDefaultsKey = "guestMode"
@@ -128,6 +129,12 @@ class AppState: ObservableObject {
             UserDefaults.standard.set(weddingId?.uuidString, forKey: Self.weddingIdKey)
         }
     }
+    @Published var coPlannerWeddingIds: [UUID] = [] {
+        didSet {
+            let values = coPlannerWeddingIds.map(\.uuidString)
+            UserDefaults.standard.set(values, forKey: Self.coPlannerWeddingIdsKey)
+        }
+    }
 
     private var activeWeddingId: UUID? {
         weddingId ?? guestWeddingId
@@ -139,6 +146,9 @@ class AppState: ObservableObject {
         isGuestAccessOnly = UserDefaults.standard.bool(forKey: Self.isGuestAccessOnlyKey)
         if let weddingIdString = UserDefaults.standard.string(forKey: Self.weddingIdKey) {
             weddingId = UUID(uuidString: weddingIdString)
+        }
+        if let weddingIdStrings = UserDefaults.standard.array(forKey: Self.coPlannerWeddingIdsKey) as? [String] {
+            coPlannerWeddingIds = weddingIdStrings.compactMap(UUID.init(uuidString:))
         }
         if let guestWeddingIdString = UserDefaults.standard.string(forKey: Self.guestWeddingIdKey) {
             guestWeddingId = UUID(uuidString: guestWeddingIdString)
@@ -181,6 +191,9 @@ class AppState: ObservableObject {
             _ = dataStore.save(localGuests, to: Self.guestsFile)
             _ = dataStore.save(cloudBudget, to: Self.budgetFile)
             _ = dataStore.save(cloudVendors, to: Self.vendorsFile)
+            let invitations = try await cloudKitSync.fetchInvitationCodes(weddingId: weddingId)
+            _ = dataStore.save(invitations, to: Self.invitationCodesFile)
+            hydrateLocalGuestRSVPs(from: invitations)
             cloudKitSync.lastSyncDate = Date()
             cloudKitSync.syncError = nil
 
@@ -498,8 +511,10 @@ class AppState: ObservableObject {
         self.weddingId = weddingId
         self.isCoPlanner = true
         self.isGuestAccessOnly = false
+        appendCoPlannerWedding(weddingId)
 
         let (wedding, guests, budget, vendors) = try await cloudKitSync.syncAllData(weddingId: weddingId)
+        let invitations = try await cloudKitSync.fetchInvitationCodes(weddingId: weddingId)
 
         if let wedding = wedding {
             self.weddingDetails = wedding
@@ -508,8 +523,29 @@ class AppState: ObservableObject {
         _ = dataStore.save(guests, to: Self.guestsFile)
         _ = dataStore.save(budget, to: Self.budgetFile)
         _ = dataStore.save(vendors, to: Self.vendorsFile)
+        _ = dataStore.save(invitations, to: Self.invitationCodesFile)
+        hydrateLocalGuestRSVPs(from: invitations)
 
         return true
+    }
+
+    func switchToCoPlannerWedding(_ weddingId: UUID) async throws {
+        guard coPlannerWeddingIds.contains(weddingId) else { return }
+        self.weddingId = weddingId
+        self.isCoPlanner = true
+        self.isGuestAccessOnly = false
+
+        let (wedding, guests, budget, vendors) = try await cloudKitSync.syncAllData(weddingId: weddingId)
+        let invitations = try await cloudKitSync.fetchInvitationCodes(weddingId: weddingId)
+
+        if let wedding = wedding {
+            self.weddingDetails = wedding
+        }
+        _ = dataStore.save(guests, to: Self.guestsFile)
+        _ = dataStore.save(budget, to: Self.budgetFile)
+        _ = dataStore.save(vendors, to: Self.vendorsFile)
+        _ = dataStore.save(invitations, to: Self.invitationCodesFile)
+        hydrateLocalGuestRSVPs(from: invitations)
     }
 
     func saveGuestToCloud(_ guest: Guest) async throws {
@@ -577,6 +613,37 @@ class AppState: ObservableObject {
         if guestWeddingId == nil {
             guestWeddingId = invitation.weddingId
         }
+    }
+
+    private func appendCoPlannerWedding(_ weddingId: UUID) {
+        guard !coPlannerWeddingIds.contains(weddingId) else { return }
+        coPlannerWeddingIds.append(weddingId)
+    }
+
+    private func hydrateLocalGuestRSVPs(from invitations: [InvitationCode]) {
+        var allRSVPsByCode: [String: GuestRSVP] = [:]
+        let cached = dataStore.load([GuestRSVP].self, from: Self.allGuestRSVPsFile) ?? []
+        for rsvp in cached {
+            allRSVPsByCode[rsvp.invitationCode] = rsvp
+        }
+
+        for invitation in invitations {
+            let status = invitation.rsvpStatus ?? .noResponse
+            guard status != .noResponse || invitation.guestName != nil else { continue }
+
+            let guestRSVP = GuestRSVP(
+                invitationCode: invitation.code,
+                guestName: invitation.guestName ?? "",
+                rsvpStatus: status,
+                mealChoice: invitation.mealChoice,
+                dietaryNotes: invitation.dietaryNotes,
+                partySize: invitation.partySize
+            )
+            _ = dataStore.save(guestRSVP, to: "guest_rsvp_\(invitation.code).json")
+            allRSVPsByCode[invitation.code] = guestRSVP
+        }
+
+        _ = dataStore.save(Array(allRSVPsByCode.values), to: Self.allGuestRSVPsFile)
     }
 
     private func loadPendingGuestSyncOperations() -> [PendingGuestSyncOperation] {
