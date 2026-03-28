@@ -65,6 +65,34 @@ struct ProfileView: View {
                         Label("Wedding Info", systemImage: "heart.fill")
                     }
                 }
+
+                if !appState.weddingMemberships.isEmpty {
+                    Section("My Weddings") {
+                        ForEach(appState.weddingMemberships) { wedding in
+                            Button(action: {
+                                Task {
+                                    await appState.switchWedding(to: wedding.weddingId)
+                                }
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(wedding.coupleNames.isEmpty ? "Untitled Wedding" : wedding.coupleNames)
+                                            .foregroundColor(.primary)
+                                        Text("\(wedding.weddingDate, formatter: dateFormatter) • \(wedding.role.rawValue.capitalized)")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if appState.weddingId == wedding.weddingId {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
                 
                 Section("Notifications") {
                     Toggle(isOn: $notificationsEnabled) {
@@ -210,6 +238,9 @@ struct ProfileView: View {
             .sheet(isPresented: $showingTestPanel) {
                 TestPanelView()
             }
+            .task {
+                appState.fetchWeddingsForCurrentUser()
+            }
         }
     }
     
@@ -284,6 +315,12 @@ struct ProfileView: View {
     private var timeFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
+        return formatter
+    }
+
+    private var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
         return formatter
     }
     

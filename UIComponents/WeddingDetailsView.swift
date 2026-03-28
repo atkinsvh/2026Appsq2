@@ -48,6 +48,7 @@ struct WeddingDetailsView: View {
             date: weddingDate,
             location: location
         )
+        appState.updateCurrentWeddingMembership(with: appState.weddingDetails)
         // Save to DataStore
         _ = appState.dataStore.save(appState.weddingDetails, to: "wedding_details.json")
         if let weddingId = appState.weddingId {
