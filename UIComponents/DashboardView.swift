@@ -373,22 +373,15 @@ struct DashboardView: View {
     }
     
     private func loadGuests() {
-        guests = appState.dataStore.load([Guest].self, from: "guests.json") ?? []
+        guests = appState.loadGuestsFromStorage()
     }
     
     private func saveGuests() {
-        _ = appState.dataStore.save(guests, to: "guests.json")
+        appState.saveGuestsToStorage(guests)
     }
     
     private func loadBudget() {
-        if let savedCategories = appState.dataStore.load([BudgetCategory].self, from: "budget_categories.json") {
-            categories = savedCategories
-        } else {
-            categories = appState.dataStore.load([BudgetCategory].self, from: "budget.json") ?? []
-            if !categories.isEmpty {
-                _ = appState.dataStore.save(categories, to: "budget_categories.json")
-            }
-        }
+        categories = appState.loadBudgetFromStorage()
     }
     
     private func loadTimeline() {
@@ -396,18 +389,18 @@ struct DashboardView: View {
     }
     
     private func loadVendors() {
-        vendors = appState.dataStore.load([Vendor].self, from: "vendors.json") ?? []
+        vendors = appState.loadVendorsFromStorage()
     }
     
     private func saveVendors() {
-        _ = appState.dataStore.save(vendors, to: "vendors.json")
+        appState.saveVendorsToStorage(vendors)
     }
     
     private func saveExpense() {
         if let categoryIndex = categories.firstIndex(where: { $0.id == selectedCategoryForExpense?.id }),
            let amount = Double(expenseAmount) {
             categories[categoryIndex].spent += amount
-            _ = appState.dataStore.save(categories, to: "budget_categories.json")
+            appState.saveBudgetToStorage(categories)
             Task {
                 do {
                     try await appState.saveBudgetToCloud(categories)

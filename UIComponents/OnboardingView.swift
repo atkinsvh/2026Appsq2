@@ -56,6 +56,10 @@ struct OnboardingView: View {
                     .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
+                    onboardingHeader
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+
                     progressIndicator
                         .padding(.top, 12)
                     
@@ -105,6 +109,26 @@ struct OnboardingView: View {
                     .frame(width: 8, height: 8)
             }
         }
+    }
+
+    private var onboardingHeader: some View {
+        HStack {
+            if currentStep != .welcome && currentStep != .roleSelection {
+                Button(action: {
+                    withAnimation {
+                        currentStep = .roleSelection
+                    }
+                }) {
+                    Label("Back to role menu", systemImage: "chevron.left")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.pink)
+            }
+
+            Spacer()
+        }
+        .frame(height: 24)
     }
     
     private var welcomeStep: some View {
@@ -529,7 +553,6 @@ struct OnboardingView: View {
             location: weddingLocation
         )
         appState.weddingDetails = weddingDetails
-        _ = DataStore.shared.save(weddingDetails, to: "wedding_details.json")
         
         // Set weddingId SYNCHRONOUSLY before proceeding
         let weddingId = appState.weddingId ?? UUID()
@@ -565,15 +588,11 @@ struct OnboardingView: View {
             BudgetCategory(name: "Gifts", allocated: totalBudget * 0.03)
         ]
         
-        _ = DataStore.shared.save(categories, to: "budget_categories.json")
+        appState.saveBudgetToStorage(categories)
         
         // Sync to CloudKit
-        if let weddingId = appState.weddingId {
-            Task {
-                try? await appState.cloudKitSync.saveBudget(categories, weddingId: weddingId)
-            }
-        } else {
-            print("Warning: No weddingId when saving budget to CloudKit")
+        Task {
+            try? await appState.saveBudgetToCloud(categories)
         }
         
         // Go to invite partner step for hosts, or todo list for guests
