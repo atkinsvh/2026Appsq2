@@ -193,6 +193,13 @@ class AppState: ObservableObject {
                     localGuests.append(cloudGuest)
                 }
             }
+
+            let invitationCodesForSync = Set(localGuests.compactMap(\.invitationCode).filter { !$0.isEmpty })
+            if !invitationCodesForSync.isEmpty {
+                let publicRSVPs = try await cloudKitSync.fetchGuestRSVPs(for: Array(invitationCodesForSync))
+                mergePublicRSVPs(publicRSVPs, into: &localGuests)
+            }
+
             _ = dataStore.save(localGuests, to: Self.guestsFile)
             _ = dataStore.save(cloudBudget, to: Self.budgetFile)
             _ = dataStore.save(cloudVendors, to: Self.vendorsFile)
@@ -268,7 +275,8 @@ class AppState: ObservableObject {
         weddingDetails = WeddingDetails(
             coupleNames: invitation.coupleNames,
             date: invitation.weddingDate,
-            location: invitation.weddingLocation
+            location: invitation.weddingLocation,
+            mealOptions: invitation.mealOptions
         )
         isGuestAccessOnly = true
         onboardingCompleted = true
@@ -282,6 +290,35 @@ class AppState: ObservableObject {
         guestRSVP = rsvp
         guestWeddingId = weddingId
         saveGuestMode()
+    }
+
+    private func mergePublicRSVPs(_ rsvps: [GuestRSVP], into guests: inout [Guest]) {
+        for rsvp in rsvps {
+            let normalizedCode = normalizeInvitationCode(rsvp.invitationCode)
+
+            if let guestIndex = guests.firstIndex(where: {
+                let codeMatch = normalizeInvitationCode($0.invitationCode.orEmpty) == normalizedCode && !normalizedCode.isEmpty
+                let nameMatch = $0.name.caseInsensitiveCompare(rsvp.guestName) == .orderedSame
+                return codeMatch || nameMatch
+            }) {
+                guests[guestIndex].rsvpStatus = rsvp.rsvpStatus
+                guests[guestIndex].mealChoice = rsvp.mealChoice
+                guests[guestIndex].dietaryNotes = rsvp.dietaryNotes
+                guests[guestIndex].partySize = rsvp.partySize
+                guests[guestIndex].invitationCode = normalizedCode
+            } else if !rsvp.guestName.isEmpty {
+                guests.append(
+                    Guest(
+                        name: rsvp.guestName,
+                        rsvpStatus: rsvp.rsvpStatus,
+                        mealChoice: rsvp.mealChoice,
+                        dietaryNotes: rsvp.dietaryNotes,
+                        partySize: rsvp.partySize,
+                        invitationCode: normalizedCode
+                    )
+                )
+            }
+        }
     }
 
     func returnToGuestCodeEntry() {

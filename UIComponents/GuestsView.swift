@@ -271,6 +271,7 @@ struct GuestsView: View {
             coupleNames: appState.weddingDetails.coupleNames,
             date: appState.weddingDetails.date,
             location: appState.weddingDetails.location,
+            mealOptions: appState.weddingDetails.mealOptions,
             guestId: guest.id,
             guestName: guest.name,
             partySize: partySize,
