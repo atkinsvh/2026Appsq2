@@ -6,9 +6,10 @@ struct VendorsView: View {
     @State private var selectedCategory: String? = nil
     @State private var showingAddVendor = false
     @State private var searchText = ""
-    
-    let categories = ["All", "Venue", "Catering", "Photography", "Music", "Florist", "Bakery", "Attire", "Officiant", "Transportation", "Other"]
-    
+
+    let categories = ["All", "Venue", "Catering", "Photography", "Music",
+                      "Florist", "Bakery", "Attire", "Officiant", "Transportation", "Other"]
+
     var filteredVendors: [Vendor] {
         var result = vendors
         if let category = selectedCategory, category != "All" {
@@ -28,7 +29,8 @@ struct VendorsView: View {
                         ForEach(categories, id: \.self) { category in
                             CategoryChip(
                                 title: category,
-                                isSelected: selectedCategory == category || (selectedCategory == nil && category == "All")
+                                isSelected: selectedCategory == category
+                                    || (selectedCategory == nil && category == "All")
                             ) {
                                 selectedCategory = category == "All" ? nil : category
                             }
@@ -37,7 +39,7 @@ struct VendorsView: View {
                     .padding()
                 }
                 .background(Color(.systemGray6))
-                
+
                 if filteredVendors.isEmpty {
                     if searchText.isEmpty && selectedCategory == nil {
                         ContentUnavailableView {
@@ -45,16 +47,18 @@ struct VendorsView: View {
                         } description: {
                             Text("Keep track of your wedding vendors and their contact info.")
                         } actions: {
-                            Button("Add Vendor") {
-                                showingAddVendor = true
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.pink)
+                            Button("Add Vendor") { showingAddVendor = true }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.pink)
                         }
                     } else if !searchText.isEmpty {
                         ContentUnavailableView.search
                     } else {
-                        ContentUnavailableView("No Vendors Found", systemImage: "magnifyingglass", description: Text("Try changing your filter."))
+                        ContentUnavailableView(
+                            "No Vendors Found",
+                            systemImage: "magnifyingglass",
+                            description: Text("Try changing your filter.")
+                        )
                     }
                 } else {
                     List {
@@ -82,20 +86,18 @@ struct VendorsView: View {
                     Haptics.shared.notify(.success)
                 }
             }
-            .onAppear {
-                loadVendors()
-            }
+            .onAppear { loadVendors() }
         }
     }
-    
+
     private func loadVendors() {
         vendors = DataStore.shared.load([Vendor].self, from: "vendors.json") ?? []
     }
-    
+
+    // BUG-10 FIX: was `_ = _ = DataStore.shared.save(...)` — redundant double discard
     private func saveVendors() {
-        _ = _ = DataStore.shared.save(vendors, to: "vendors.json")
-        
-        // Sync to CloudKit
+        _ = DataStore.shared.save(vendors, to: "vendors.json")
+
         if let weddingId = appState.weddingId {
             Task {
                 do {
@@ -105,10 +107,10 @@ struct VendorsView: View {
                 }
             }
         } else {
-            print("CloudKit: Warning - No weddingId when saving vendors. Complete onboarding first.")
+            print("CloudKit: Warning — No weddingId when saving vendors. Complete onboarding first.")
         }
     }
-    
+
     private func deleteVendors(at offsets: IndexSet) {
         vendors.remove(atOffsets: offsets)
         saveVendors()
@@ -119,7 +121,7 @@ struct CategoryChip: View {
     let title: String
     let isSelected: Bool
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             Text(title)
@@ -136,7 +138,7 @@ struct CategoryChip: View {
 
 struct VendorRowView: View {
     let vendor: Vendor
-    
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -147,27 +149,25 @@ struct VendorRowView: View {
                     .foregroundColor(.secondary)
                 if let phone = vendor.phone, !phone.isEmpty {
                     HStack(spacing: 4) {
-                        Image(systemName: "phone")
-                            .font(.caption)
-                        Text(phone)
-                            .font(.caption)
+                        Image(systemName: "phone").font(.caption)
+                        Text(phone).font(.caption)
                     }
                     .foregroundColor(.secondary)
                 }
             }
-            
+
             Spacer()
-            
+
             VStack(spacing: 8) {
                 if let phone = vendor.phone, !phone.isEmpty {
-                    Button(action: callVendor) {
+                    Button(action: { callVendor(phone: phone) }) {
                         Image(systemName: "phone.circle.fill")
                             .font(.title2)
                             .foregroundColor(.green)
                     }
                 }
                 if let email = vendor.email, !email.isEmpty {
-                    Button(action: emailVendor) {
+                    Button(action: { emailVendor(email: email) }) {
                         Image(systemName: "envelope.circle.fill")
                             .font(.title2)
                             .foregroundColor(.blue)
@@ -177,16 +177,14 @@ struct VendorRowView: View {
         }
         .padding(.vertical, 8)
     }
-    
-    private func callVendor() {
-        guard let phone = vendor.phone,
-              let url = URL(string: "tel:\(phone)") else { return }
+
+    private func callVendor(phone: String) {
+        guard let url = URL(string: "tel:\(phone)") else { return }
         UIApplication.shared.open(url)
     }
-    
-    private func emailVendor() {
-        guard let email = vendor.email,
-              let url = URL(string: "mailto:\(email)") else { return }
+
+    private func emailVendor(email: String) {
+        guard let url = URL(string: "mailto:\(email)") else { return }
         UIApplication.shared.open(url)
     }
 }
@@ -199,11 +197,13 @@ struct AddVendorView: View {
     @State private var email = ""
     @State private var website = ""
     @State private var notes = ""
-    
+
     let onSave: (Vendor) -> Void
-    
-    private let categories = ["Venue", "Catering", "Photography", "Music", "Florist", "Bakery", "Attire", "Officiant", "Transportation", "Other"]
-    
+
+    private let categories = ["Venue", "Catering", "Photography", "Music",
+                               "Florist", "Bakery", "Attire", "Officiant",
+                               "Transportation", "Other"]
+
     var body: some View {
         NavigationStack {
             Form {
@@ -215,10 +215,9 @@ struct AddVendorView: View {
                         }
                     }
                 }
-                
+
                 Section("Contact") {
-                    TextField("Phone", text: $phone)
-                        .keyboardType(.phonePad)
+                    TextField("Phone", text: $phone).keyboardType(.phonePad)
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
@@ -226,10 +225,9 @@ struct AddVendorView: View {
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                 }
-                
+
                 Section("Notes") {
-                    TextEditor(text: $notes)
-                        .frame(minHeight: 100)
+                    TextEditor(text: $notes).frame(minHeight: 100)
                 }
             }
             .navigationTitle("Add Vendor")

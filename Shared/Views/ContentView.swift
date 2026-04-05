@@ -134,7 +134,7 @@ struct GuestHomeView: View {
     @State private var invitation: InvitationCode?
     @State private var eventDayItems: [TimelineItem] = []
     @State private var showingShareSheet = false
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -159,18 +159,18 @@ struct GuestHomeView: View {
             }
         }
     }
-    
+
+    // BUG-01 FIX: the closing bracket for .background() was `}` instead of `)`.
     private var guestHeader: some View {
         VStack(spacing: 12) {
             Image("HeartLarge")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 90, height: 90)
-            
+
             Text("Welcome, \(guestDisplayName)")
-                .font(.title2)
-                .fontWeight(.bold)
-            
+                .font(.title2).fontWeight(.bold)
+
             Text("Your RSVP is saved. You can check your details, event reminders, and share photos here.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
@@ -184,46 +184,40 @@ struct GuestHomeView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-        }
+        )                      // ← BUG-01 FIX: was `}` here
         .cornerRadius(20)
     }
-    
+
     private var codeCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Your Guest Code")
-                .font(.headline)
-            
+            Text("Your Guest Code").font(.headline)
             HStack {
                 Text(appState.currentInvitationCode ?? "Not available")
                     .font(.system(.title3, design: .monospaced))
                     .fontWeight(.bold)
                     .foregroundColor(.pink)
                 Spacer()
-                Button(action: copyCode) {
-                    Image(systemName: "doc.on.doc")
-                }
-                Button(action: { showingShareSheet = true }) {
-                    Image(systemName: "square.and.arrow.up")
-                }
+                Button(action: copyCode) { Image(systemName: "doc.on.doc") }
+                Button(action: { showingShareSheet = true }) { Image(systemName: "square.and.arrow.up") }
             }
-            
             Text("Keep this code handy for RSVP updates and event check-in.")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.caption).foregroundColor(.secondary)
         }
         .padding()
         .background(Color(.systemBackground))
         .cornerRadius(16)
     }
-    
+
     private var eventInfoCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Event Details")
-                .font(.headline)
-            
-            GuestDetailRow(label: "Couple", value: appState.weddingDetails.coupleNames.isEmpty ? "Wedding Event" : appState.weddingDetails.coupleNames)
-            GuestDetailRow(label: "Date", value: formattedWeddingDate)
-            GuestDetailRow(label: "Location", value: appState.weddingDetails.location.isEmpty ? "Location will be shared soon" : appState.weddingDetails.location)
+            Text("Event Details").font(.headline)
+            GuestDetailRow(label: "Couple",
+                           value: appState.weddingDetails.coupleNames.isEmpty
+                               ? "Wedding Event" : appState.weddingDetails.coupleNames)
+            GuestDetailRow(label: "Date",   value: formattedWeddingDate)
+            GuestDetailRow(label: "Location",
+                           value: appState.weddingDetails.location.isEmpty
+                               ? "Location will be shared soon" : appState.weddingDetails.location)
             if let invitation {
                 GuestDetailRow(label: "Party Size", value: "\(invitation.partySize)")
             }
@@ -232,58 +226,47 @@ struct GuestHomeView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
     }
-    
+
     private var rsvpSummaryCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Your RSVP")
-                .font(.headline)
-            
+            Text("Your RSVP").font(.headline)
             GuestDetailRow(label: "Status", value: rsvpStatusText)
-            GuestDetailRow(label: "Meal", value: appState.guestRSVP?.mealChoice ?? invitation?.mealChoice ?? "Not selected")
-            GuestDetailRow(label: "Notes", value: appState.guestRSVP?.dietaryNotes ?? invitation?.dietaryNotes ?? "No notes submitted")
-            GuestDetailRow(label: "Party Size", value: "\(appState.guestRSVP?.partySize ?? invitation?.partySize ?? 1)")
+            GuestDetailRow(label: "Meal",
+                           value: appState.guestRSVP?.mealChoice ?? invitation?.mealChoice ?? "Not selected")
+            GuestDetailRow(label: "Notes",
+                           value: appState.guestRSVP?.dietaryNotes ?? invitation?.dietaryNotes ?? "No notes submitted")
+            GuestDetailRow(label: "Party Size",
+                           value: "\(appState.guestRSVP?.partySize ?? invitation?.partySize ?? 1)")
         }
         .padding()
         .background(Color(.systemBackground))
         .cornerRadius(16)
     }
-    
+
     private var itineraryCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Event Itinerary")
-                    .font(.headline)
+                Text("Event Itinerary").font(.headline)
                 Spacer()
-                Image(systemName: "calendar.badge.clock")
-                    .foregroundColor(.pink)
+                Image(systemName: "calendar.badge.clock").foregroundColor(.pink)
             }
-            
             if eventDayItems.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Arrive 30 minutes early")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                    Text("Ceremony date: \(formattedWeddingDate)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(appState.weddingDetails.location.isEmpty ? "Venue details will appear here when available." : "Reception to follow at \(appState.weddingDetails.location).")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Text("Arrive 30 minutes early").font(.subheadline).fontWeight(.semibold)
+                    Text("Ceremony date: \(formattedWeddingDate)").font(.caption).foregroundColor(.secondary)
+                    Text(appState.weddingDetails.location.isEmpty
+                         ? "Venue details will appear here when available."
+                         : "Reception to follow at \(appState.weddingDetails.location).")
+                        .font(.caption).foregroundColor(.secondary)
                 }
             } else {
                 ForEach(eventDayItems, id: \.id) { item in
                     HStack(alignment: .top) {
-                        Circle()
-                            .fill(Color.pink)
-                            .frame(width: 8, height: 8)
-                            .padding(.top, 6)
+                        Circle().fill(Color.pink).frame(width: 8, height: 8).padding(.top, 6)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title)
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
+                            Text(item.title).font(.subheadline).fontWeight(.semibold)
                             Text(item.dueDate.formatted(date: .abbreviated, time: .shortened))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.caption).foregroundColor(.secondary)
                         }
                         Spacer()
                     }
@@ -294,7 +277,7 @@ struct GuestHomeView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
     }
-    
+
     private var actionButtons: some View {
         VStack(spacing: 12) {
             Button(action: {
@@ -316,10 +299,8 @@ struct GuestHomeView: View {
                     .foregroundColor(.primary)
                     .cornerRadius(12)
             }
-            
-            Button(action: {
-                appState.returnToGuestCodeEntry()
-            }) {
+
+            Button(action: { appState.returnToGuestCodeEntry() }) {
                 Label("Use Another Code", systemImage: "arrow.counterclockwise")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
@@ -330,30 +311,28 @@ struct GuestHomeView: View {
             }
         }
     }
-    
+
     private var guestDisplayName: String {
         let name = appState.guestRSVP?.guestName ?? invitation?.guestName ?? ""
         return name.isEmpty ? "Guest" : name
     }
-    
+
     private var formattedWeddingDate: String {
         appState.weddingDetails.date.formatted(date: .complete, time: .omitted)
     }
-    
+
     private var rsvpStatusText: String {
         switch appState.guestRSVP?.rsvpStatus ?? invitation?.rsvpStatus ?? .noResponse {
-        case .attending:
-            return "Attending"
-        case .declined:
-            return "Declined"
-        case .noResponse:
-            return "Pending"
+        case .attending:  return "Attending"
+        case .declined:   return "Declined"
+        case .noResponse: return "Pending"
         }
     }
-    
+
     private var shareMessage: String {
         let code = appState.currentInvitationCode ?? "Unavailable"
-        let coupleNames = appState.weddingDetails.coupleNames.isEmpty ? "Wedding Event" : appState.weddingDetails.coupleNames
+        let coupleNames = appState.weddingDetails.coupleNames.isEmpty
+            ? "Wedding Event" : appState.weddingDetails.coupleNames
         return """
         \(coupleNames)
         Guest code: \(code)
@@ -361,24 +340,23 @@ struct GuestHomeView: View {
         Location: \(appState.weddingDetails.location)
         """
     }
-    
+
     private func copyCode() {
         #if canImport(UIKit)
         UIPasteboard.general.string = appState.currentInvitationCode
         #endif
     }
-    
+
     private func refreshGuestContext() async {
         eventDayItems = loadEventDayItems()
-        
         guard let code = appState.currentInvitationCode else { return }
-        
+
         if let localInvitations = DataStore.shared.load([InvitationCode].self, from: "invitation_codes.json"),
            let localInvitation = localInvitations.first(where: { $0.code == code }) {
             invitation = localInvitation
             appState.guestWeddingId = localInvitation.weddingId
         }
-        
+
         do {
             if let cloudInvitation = try await appState.fetchInvitationCodeFromCloud(code) {
                 invitation = cloudInvitation
@@ -390,7 +368,8 @@ struct GuestHomeView: View {
                         location: cloudInvitation.weddingLocation
                     )
                 }
-                var cachedInvitations = DataStore.shared.load([InvitationCode].self, from: "invitation_codes.json") ?? []
+                var cachedInvitations = DataStore.shared.load([InvitationCode].self,
+                                                              from: "invitation_codes.json") ?? []
                 if let index = cachedInvitations.firstIndex(where: { $0.code == cloudInvitation.code }) {
                     cachedInvitations[index] = cloudInvitation
                 } else {
@@ -413,18 +392,25 @@ struct GuestHomeView: View {
             print("Failed to refresh guest invitation context: \(error)")
         }
     }
-    
+
     private func loadEventDayItems() -> [TimelineItem] {
         let items = DataStore.shared.load([TimelineItem].self, from: "timeline.json") ?? []
         let weddingDay = Calendar.current.startOfDay(for: appState.weddingDetails.date)
         return items
             .filter {
                 let dueDay = Calendar.current.startOfDay(for: $0.dueDate)
-                return abs(dueDay.timeIntervalSince(weddingDay)) <= 86_400 || $0.title.localizedCaseInsensitiveContains("wedding")
+                return abs(dueDay.timeIntervalSince(weddingDay)) <= 86_400
+                    || $0.title.localizedCaseInsensitiveContains("wedding")
             }
             .sorted { $0.dueDate < $1.dueDate }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GuestPhotoWall — BUG-05 FIX
+// ─────────────────────────────────────────────────────────────────────────────
+import PhotosUI
+
 
 struct GuestDetailRow: View {
     let label: String

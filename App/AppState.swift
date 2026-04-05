@@ -2,6 +2,10 @@
 //  AppState.swift
 //  VowPlanner
 //
+//  FIXED:
+//    BUG-02 — userId not persisted on first generation (didSet skipped in init)
+//    BUG-03 — mergePublicRSVPs name-only match causes cross-guest data corruption
+//    BUG-04 — saveGuestMode stored a meaningless nil key for guestRSVP
 
 import Foundation
 import SwiftUI
@@ -61,7 +65,7 @@ enum GuestCodeValidationError: LocalizedError {
         case .invalidFormat:
             return "Please enter a valid 6-character invitation code."
         case .notFound:
-            return "We couldn’t verify that guest code. Ask the couple to confirm it and try again."
+            return "We couldn't verify that guest code. Ask the couple to confirm it and try again."
         }
     }
 }
@@ -140,16 +144,24 @@ class AppState: ObservableObject {
         weddingId ?? guestWeddingId
     }
 
+    // MARK: - Init
+    // BUG-02 FIX: `didSet` is NOT called during `init`, so a newly generated UUID
+    // must be explicitly saved to UserDefaults rather than relying on the observer.
     init() {
         if let savedUserId = UserDefaults.standard.string(forKey: Self.userIdKey),
            let parsed = UUID(uuidString: savedUserId) {
             userId = parsed
         } else {
-            userId = UUID()
+            let newId = UUID()
+            userId = newId
+            // Explicit save — didSet does not fire during initialisation.
+            UserDefaults.standard.set(newId.uuidString, forKey: Self.userIdKey)
         }
+
         onboardingCompleted = UserDefaults.standard.bool(forKey: Self.onboardingCompletedKey)
         isCoPlanner = UserDefaults.standard.bool(forKey: Self.isCoPlannerKey)
         isGuestAccessOnly = UserDefaults.standard.bool(forKey: Self.isGuestAccessOnlyKey)
+
         if let weddingIdString = UserDefaults.standard.string(forKey: Self.weddingIdKey) {
             weddingId = UUID(uuidString: weddingIdString)
         }
@@ -292,20 +304,35 @@ class AppState: ObservableObject {
         saveGuestMode()
     }
 
+    // MARK: - BUG-03 FIX: mergePublicRSVPs
+    // Previous logic used `nameMatch` alone (without any code check), which meant
+    // two guests with the same name would silently overwrite each other's RSVP data.
+    // The fix: name-only matching is only accepted when BOTH the RSVP and the guest
+    // record lack invitation codes — i.e., it is genuinely the only identifier available.
     private func mergePublicRSVPs(_ rsvps: [GuestRSVP], into guests: inout [Guest]) {
         for rsvp in rsvps {
             let normalizedCode = normalizeInvitationCode(rsvp.invitationCode)
 
-            if let guestIndex = guests.firstIndex(where: {
-                let codeMatch = normalizeInvitationCode($0.invitationCode.orEmpty) == normalizedCode && !normalizedCode.isEmpty
-                let nameMatch = $0.name.caseInsensitiveCompare(rsvp.guestName) == .orderedSame
+            if let guestIndex = guests.firstIndex(where: { guest in
+                // Primary match: invitation code (most specific, use whenever present)
+                let guestCode = normalizeInvitationCode(guest.invitationCode.orEmpty)
+                let codeMatch = !normalizedCode.isEmpty && guestCode == normalizedCode
+
+                // Fallback match: name, only when neither side has a code
+                let guestLacksCode = guestCode.isEmpty
+                let rsvpLacksCode = normalizedCode.isEmpty
+                let nameMatch = guestLacksCode && rsvpLacksCode
+                    && guest.name.caseInsensitiveCompare(rsvp.guestName) == .orderedSame
+
                 return codeMatch || nameMatch
             }) {
                 guests[guestIndex].rsvpStatus = rsvp.rsvpStatus
                 guests[guestIndex].mealChoice = rsvp.mealChoice
                 guests[guestIndex].dietaryNotes = rsvp.dietaryNotes
                 guests[guestIndex].partySize = rsvp.partySize
-                guests[guestIndex].invitationCode = normalizedCode
+                if !normalizedCode.isEmpty {
+                    guests[guestIndex].invitationCode = normalizedCode
+                }
             } else if !rsvp.guestName.isEmpty {
                 guests.append(
                     Guest(
@@ -314,7 +341,7 @@ class AppState: ObservableObject {
                         mealChoice: rsvp.mealChoice,
                         dietaryNotes: rsvp.dietaryNotes,
                         partySize: rsvp.partySize,
-                        invitationCode: normalizedCode
+                        invitationCode: normalizedCode.isEmpty ? nil : normalizedCode
                     )
                 )
             }
@@ -481,10 +508,14 @@ class AppState: ObservableObject {
         }
     }
 
+    // MARK: - BUG-04 FIX: saveGuestMode
+    // The old version stored `"guestRSVP": nil` as a key in the dictionary, which
+    // was never read back and created the false impression that guestRSVP persisted
+    // through this path (it persists via its own file, not via this dictionary).
+    // Removed the dead key to make intent explicit.
     private func saveGuestMode() {
         let data: [String: String?] = [
             "invitationCode": currentInvitationCode,
-            "guestRSVP": nil,
             "guestWeddingId": guestWeddingId?.uuidString
         ]
         if let encoded = try? JSONEncoder().encode(data) {
