@@ -163,7 +163,7 @@ struct WebsiteView: View {
         isGenerating = true
         generationErrorMessage = nil
 
-        let guests = appState.dataStore.load([Guest].self, from: "guests.json") ?? []
+        let guests = appState.loadCurrentGuests()
         let attendingGuests = guests.filter { $0.rsvpStatus == .attending }
 
         let request = WebsiteGenerationRequest(
@@ -276,4 +276,3 @@ struct WebView: UIViewRepresentable {
         webView.loadHTMLString(html, baseURL: nil)
     }
 }
-

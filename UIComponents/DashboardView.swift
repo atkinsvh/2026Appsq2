@@ -70,6 +70,7 @@ struct DashboardView: View {
                 VStack(spacing: 16) {
                     // Warm welcome message
                     welcomeMessage
+                    weddingSwitcherCard
                     
                     weddingInfoCard
                     
@@ -204,6 +205,12 @@ struct DashboardView: View {
                 Text("Please add a budget category first.")
             }
             .onAppear {
+                loadGuests()
+                loadBudget()
+                loadTimeline()
+                loadVendors()
+            }
+            .onChange(of: appState.weddingId) { _, _ in
                 loadGuests()
                 loadBudget()
                 loadTimeline()
@@ -371,43 +378,65 @@ struct DashboardView: View {
         formatter.dateStyle = .full
         return formatter.string(from: appState.weddingDetails.date)
     }
-    
-    private func loadGuests() {
-        guests = appState.dataStore.load([Guest].self, from: "guests.json") ?? []
-    }
-    
-    private func saveGuests() {
-        _ = appState.dataStore.save(guests, to: "guests.json")
-    }
-    
-    private func loadBudget() {
-        if let savedCategories = appState.dataStore.load([BudgetCategory].self, from: "budget_categories.json") {
-            categories = savedCategories
-        } else {
-            categories = appState.dataStore.load([BudgetCategory].self, from: "budget.json") ?? []
-            if !categories.isEmpty {
-                _ = appState.dataStore.save(categories, to: "budget_categories.json")
+
+    private var weddingSwitcherCard: some View {
+        Group {
+            if !appState.weddingMemberships.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Wedding Workspace")
+                        .font(.headline)
+                    Picker("Wedding", selection: Binding(
+                        get: { appState.weddingId ?? appState.weddingMemberships.first?.weddingId ?? UUID() },
+                        set: { selectedWeddingId in
+                            Task {
+                                await appState.switchWedding(to: selectedWeddingId)
+                            }
+                        }
+                    )) {
+                        ForEach(appState.weddingMemberships) { wedding in
+                            Text("\(wedding.coupleNames.isEmpty ? "Untitled Wedding" : wedding.coupleNames) (\(wedding.role.rawValue.capitalized))")
+                                .tag(wedding.weddingId)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
             }
         }
     }
     
+    private func loadGuests() {
+        guests = appState.loadCurrentGuests()
+    }
+    
+    private func saveGuests() {
+        appState.saveCurrentGuests(guests)
+    }
+    
+    private func loadBudget() {
+        categories = appState.loadCurrentBudget()
+    }
+    
     private func loadTimeline() {
-        timelineItems = appState.dataStore.load([TimelineItem].self, from: "timeline.json") ?? []
+        timelineItems = appState.loadCurrentTimeline()
     }
     
     private func loadVendors() {
-        vendors = appState.dataStore.load([Vendor].self, from: "vendors.json") ?? []
+        vendors = appState.loadCurrentVendors()
     }
     
     private func saveVendors() {
-        _ = appState.dataStore.save(vendors, to: "vendors.json")
+        appState.saveCurrentVendors(vendors)
     }
     
     private func saveExpense() {
         if let categoryIndex = categories.firstIndex(where: { $0.id == selectedCategoryForExpense?.id }),
            let amount = Double(expenseAmount) {
             categories[categoryIndex].spent += amount
-            _ = appState.dataStore.save(categories, to: "budget_categories.json")
+            appState.saveCurrentBudget(categories)
             Task {
                 do {
                     try await appState.saveBudgetToCloud(categories)

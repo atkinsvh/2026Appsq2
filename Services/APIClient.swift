@@ -20,7 +20,17 @@ class APIClient {
     func fetchWeddings(for userId: UUID, completion: @escaping ([WeddingSummary]) -> Void) {
         let fileName = "user_wedding_memberships_\(userId.uuidString.lowercased()).json"
         let memberships = DataStore.shared.load([UserWeddingMembership].self, from: fileName) ?? []
-        let summaries = memberships
+        let deduped = memberships.reduce(into: [UUID: UserWeddingMembership]()) { result, membership in
+            if let existing = result[membership.weddingId] {
+                // Prefer host role if duplicate records exist.
+                if existing.role == .coplanner && membership.role == .host {
+                    result[membership.weddingId] = membership
+                }
+            } else {
+                result[membership.weddingId] = membership
+            }
+        }
+        let summaries = deduped.values
             .sorted(by: { $0.weddingDate < $1.weddingDate })
             .map(WeddingSummary.init(membership:))
         completion(summaries)

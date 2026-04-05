@@ -87,16 +87,19 @@ struct VendorsView: View {
                 }
             }
             .onAppear { loadVendors() }
+            .onChange(of: appState.weddingId) { _, _ in
+                loadVendors()
+            }
         }
     }
 
     private func loadVendors() {
-        vendors = DataStore.shared.load([Vendor].self, from: "vendors.json") ?? []
+        vendors = appState.loadCurrentVendors()
     }
 
     // BUG-10 FIX: was `_ = _ = DataStore.shared.save(...)` — redundant double discard
     private func saveVendors() {
-        _ = DataStore.shared.save(vendors, to: "vendors.json")
+        appState.saveCurrentVendors(vendors)
 
         if let weddingId = appState.weddingId {
             Task {
