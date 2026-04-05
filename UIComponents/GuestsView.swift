@@ -252,6 +252,9 @@ struct GuestsView: View {
             .onAppear {
                 loadGuests()
             }
+            .onChange(of: appState.weddingId) { _, _ in
+                loadGuests()
+            }
         }
     }
     
@@ -320,7 +323,7 @@ struct GuestsView: View {
     }
     
     private func loadGuests() {
-        var loadedGuests = DataStore.shared.load([Guest].self, from: "guests.json") ?? []
+        var loadedGuests = appState.loadCurrentGuests()
         let invitationCodes = loadInvitationCodes() ?? []
         
         for index in loadedGuests.indices {
@@ -359,7 +362,7 @@ struct GuestsView: View {
     }
     
     private func saveGuests() {
-        _ = DataStore.shared.save(guests, to: "guests.json")
+        appState.saveCurrentGuests(guests)
     }
     
     private func deleteGuests(at offsets: IndexSet) {
@@ -376,11 +379,11 @@ struct GuestsView: View {
     }
     
     private func loadInvitationCodes() -> [InvitationCode]? {
-        return DataStore.shared.load([InvitationCode].self, from: "invitation_codes.json")
+        appState.loadCurrentInvitationCodes()
     }
     
     private func saveInvitationCodes(_ codes: [InvitationCode]) {
-        _ = DataStore.shared.save(codes, to: "invitation_codes.json")
+        appState.saveCurrentInvitationCodes(codes)
     }
     
     private func sendRSVPReminders() {
@@ -695,7 +698,7 @@ struct GuestDetailView: View {
         .navigationTitle("Guest Details")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            guests = DataStore.shared.load([Guest].self, from: "guests.json") ?? []
+            guests = appState.loadCurrentGuests()
         }
         .onChange(of: guest) { _, _ in
             saveGuest()
@@ -708,7 +711,7 @@ struct GuestDetailView: View {
         } else {
             guests.append(guest)
         }
-        _ = DataStore.shared.save(guests, to: "guests.json")
+        appState.saveCurrentGuests(guests)
         Task {
             do {
                 try await appState.saveGuestToCloud(guest)

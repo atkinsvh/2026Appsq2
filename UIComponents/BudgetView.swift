@@ -200,22 +200,23 @@ struct BudgetView: View {
             .onAppear {
                 loadCategories()
             }
+            .onChange(of: appState.weddingId) { _, _ in
+                loadCategories()
+            }
         }
     }
     
     private func loadCategories() {
-        if let savedCategories = DataStore.shared.load([BudgetCategory].self, from: "budget_categories.json") {
-            categories = savedCategories
-        } else if let migratedCategories = DataStore.shared.load([BudgetCategory].self, from: "budget.json") {
-            categories = migratedCategories
-            _ = DataStore.shared.save(migratedCategories, to: "budget_categories.json")
-        } else {
+        let savedCategories = appState.loadCurrentBudget()
+        if savedCategories.isEmpty {
             categories = defaultCategories()
+        } else {
+            categories = savedCategories
         }
     }
     
     private func saveCategories() {
-        _ = DataStore.shared.save(categories, to: "budget_categories.json")
+        appState.saveCurrentBudget(categories)
         Task {
             do {
                 try await appState.saveBudgetToCloud(categories)

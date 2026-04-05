@@ -103,7 +103,11 @@ class AppState: ObservableObject {
     @Published var tooltipsDismissed: Set<String> = []
     @Published var weddingDetails: WeddingDetails = WeddingDetails(coupleNames: "", date: Date(), location: "") {
         didSet {
-            _ = dataStore.save(weddingDetails, to: Self.weddingDetailsFile)
+            if let activeWeddingId {
+                _ = dataStore.save(weddingDetails, to: weddingDetailsFileName(for: activeWeddingId))
+            } else {
+                _ = dataStore.save(weddingDetails, to: Self.weddingDetailsFile)
+            }
         }
     }
 
@@ -131,6 +135,7 @@ class AppState: ObservableObject {
     @Published var weddingId: UUID? {
         didSet {
             UserDefaults.standard.set(weddingId?.uuidString, forKey: Self.weddingIdKey)
+            loadLocalDataForActiveWedding()
         }
     }
     @Published var userId: UUID {
@@ -142,6 +147,156 @@ class AppState: ObservableObject {
 
     private var activeWeddingId: UUID? {
         weddingId ?? guestWeddingId
+    }
+
+    private func weddingDetailsFileName(for weddingId: UUID) -> String {
+        "wedding_details_\(weddingId.uuidString.lowercased()).json"
+    }
+
+    private func guestsFileName(for weddingId: UUID) -> String {
+        "guests_\(weddingId.uuidString.lowercased()).json"
+    }
+
+    private func budgetFileName(for weddingId: UUID) -> String {
+        "budget_categories_\(weddingId.uuidString.lowercased()).json"
+    }
+
+    private func vendorsFileName(for weddingId: UUID) -> String {
+        "vendors_\(weddingId.uuidString.lowercased()).json"
+    }
+
+    private func timelineFileName(for weddingId: UUID) -> String {
+        "timeline_\(weddingId.uuidString.lowercased()).json"
+    }
+
+    private func invitationCodesFileName(for weddingId: UUID) -> String {
+        "invitation_codes_\(weddingId.uuidString.lowercased()).json"
+    }
+
+    func loadCurrentGuests() -> [Guest] {
+        guard let activeWeddingId else {
+            return dataStore.load([Guest].self, from: Self.guestsFile) ?? []
+        }
+        let weddingScoped = dataStore.load([Guest].self, from: guestsFileName(for: activeWeddingId))
+        if let weddingScoped {
+            return weddingScoped
+        }
+        let legacy = dataStore.load([Guest].self, from: Self.guestsFile) ?? []
+        if !legacy.isEmpty {
+            _ = dataStore.save(legacy, to: guestsFileName(for: activeWeddingId))
+        }
+        return legacy
+    }
+
+    func saveCurrentGuests(_ guests: [Guest]) {
+        guard let activeWeddingId else {
+            _ = dataStore.save(guests, to: Self.guestsFile)
+            return
+        }
+        _ = dataStore.save(guests, to: guestsFileName(for: activeWeddingId))
+    }
+
+    func loadCurrentBudget() -> [BudgetCategory] {
+        guard let activeWeddingId else {
+            return dataStore.load([BudgetCategory].self, from: Self.budgetFile) ?? []
+        }
+        if let scoped = dataStore.load([BudgetCategory].self, from: budgetFileName(for: activeWeddingId)) {
+            return scoped
+        }
+        let legacy = dataStore.load([BudgetCategory].self, from: Self.budgetFile)
+            ?? dataStore.load([BudgetCategory].self, from: "budget.json")
+            ?? []
+        if !legacy.isEmpty {
+            _ = dataStore.save(legacy, to: budgetFileName(for: activeWeddingId))
+        }
+        return legacy
+    }
+
+    func saveCurrentBudget(_ categories: [BudgetCategory]) {
+        guard let activeWeddingId else {
+            _ = dataStore.save(categories, to: Self.budgetFile)
+            return
+        }
+        _ = dataStore.save(categories, to: budgetFileName(for: activeWeddingId))
+    }
+
+    func loadCurrentVendors() -> [Vendor] {
+        guard let activeWeddingId else {
+            return dataStore.load([Vendor].self, from: Self.vendorsFile) ?? []
+        }
+        if let scoped = dataStore.load([Vendor].self, from: vendorsFileName(for: activeWeddingId)) {
+            return scoped
+        }
+        let legacy = dataStore.load([Vendor].self, from: Self.vendorsFile) ?? []
+        if !legacy.isEmpty {
+            _ = dataStore.save(legacy, to: vendorsFileName(for: activeWeddingId))
+        }
+        return legacy
+    }
+
+    func saveCurrentVendors(_ vendors: [Vendor]) {
+        guard let activeWeddingId else {
+            _ = dataStore.save(vendors, to: Self.vendorsFile)
+            return
+        }
+        _ = dataStore.save(vendors, to: vendorsFileName(for: activeWeddingId))
+    }
+
+    func loadCurrentTimeline() -> [TimelineItem] {
+        guard let activeWeddingId else {
+            return dataStore.load([TimelineItem].self, from: "timeline.json") ?? []
+        }
+        if let scoped = dataStore.load([TimelineItem].self, from: timelineFileName(for: activeWeddingId)) {
+            return scoped
+        }
+        let legacy = dataStore.load([TimelineItem].self, from: "timeline.json") ?? []
+        if !legacy.isEmpty {
+            _ = dataStore.save(legacy, to: timelineFileName(for: activeWeddingId))
+        }
+        return legacy
+    }
+
+    func saveCurrentTimeline(_ items: [TimelineItem]) {
+        guard let activeWeddingId else {
+            _ = dataStore.save(items, to: "timeline.json")
+            return
+        }
+        _ = dataStore.save(items, to: timelineFileName(for: activeWeddingId))
+    }
+
+    func loadCurrentInvitationCodes() -> [InvitationCode] {
+        guard let activeWeddingId else {
+            return dataStore.load([InvitationCode].self, from: Self.invitationCodesFile) ?? []
+        }
+        if let scoped = dataStore.load([InvitationCode].self, from: invitationCodesFileName(for: activeWeddingId)) {
+            return scoped
+        }
+        let legacy = dataStore.load([InvitationCode].self, from: Self.invitationCodesFile)?
+            .filter { $0.weddingId == activeWeddingId } ?? []
+        if !legacy.isEmpty {
+            _ = dataStore.save(legacy, to: invitationCodesFileName(for: activeWeddingId))
+        }
+        return legacy
+    }
+
+    func saveCurrentInvitationCodes(_ codes: [InvitationCode]) {
+        guard let activeWeddingId else {
+            _ = dataStore.save(codes, to: Self.invitationCodesFile)
+            return
+        }
+        _ = dataStore.save(codes, to: invitationCodesFileName(for: activeWeddingId))
+    }
+
+    private func loadLocalDataForActiveWedding() {
+        guard let activeWeddingId else { return }
+        if let details = dataStore.load(WeddingDetails.self, from: weddingDetailsFileName(for: activeWeddingId)) {
+            weddingDetails = details
+            return
+        }
+        if let legacyDetails = dataStore.load(WeddingDetails.self, from: Self.weddingDetailsFile) {
+            weddingDetails = legacyDetails
+            _ = dataStore.save(legacyDetails, to: weddingDetailsFileName(for: activeWeddingId))
+        }
     }
 
     // MARK: - Init
@@ -197,7 +352,7 @@ class AppState: ObservableObject {
                 self.weddingDetails = cloudWedding
             }
 
-            var localGuests = dataStore.load([Guest].self, from: Self.guestsFile) ?? []
+            var localGuests = loadCurrentGuests()
             for cloudGuest in cloudGuests {
                 if let index = localGuests.firstIndex(where: { $0.id == cloudGuest.id }) {
                     localGuests[index] = cloudGuest
@@ -216,9 +371,9 @@ class AppState: ObservableObject {
                 mergePublicRSVPs(allRSVPs, into: &localGuests)
             }
 
-            _ = dataStore.save(localGuests, to: Self.guestsFile)
-            _ = dataStore.save(cloudBudget, to: Self.budgetFile)
-            _ = dataStore.save(cloudVendors, to: Self.vendorsFile)
+            saveCurrentGuests(localGuests)
+            saveCurrentBudget(cloudBudget)
+            saveCurrentVendors(cloudVendors)
             cloudKitSync.lastSyncDate = Date()
             cloudKitSync.syncError = nil
 
@@ -246,7 +401,10 @@ class AppState: ObservableObject {
     }
 
     func bootstrap() async {
-        if let details = dataStore.load(WeddingDetails.self, from: Self.weddingDetailsFile) {
+        if let activeWeddingId,
+           let details = dataStore.load(WeddingDetails.self, from: weddingDetailsFileName(for: activeWeddingId)) {
+            self.weddingDetails = details
+        } else if let details = dataStore.load(WeddingDetails.self, from: Self.weddingDetailsFile) {
             self.weddingDetails = details
         }
         await flushPendingGuestSyncOperations()
@@ -387,7 +545,7 @@ class AppState: ObservableObject {
     }
 
     private func updateGuest(from rsvp: GuestRSVP) {
-        var guests = dataStore.load([Guest].self, from: Self.guestsFile) ?? []
+        var guests = loadCurrentGuests()
 
         if let index = guests.firstIndex(where: {
             let hasMatchingCode = !$0.invitationCode.orEmpty.isEmpty && $0.invitationCode == rsvp.invitationCode
@@ -399,7 +557,7 @@ class AppState: ObservableObject {
             guests[index].dietaryNotes = rsvp.dietaryNotes
             guests[index].partySize = rsvp.partySize
             guests[index].invitationCode = rsvp.invitationCode
-            _ = dataStore.save(guests, to: Self.guestsFile)
+            saveCurrentGuests(guests)
 
             Task {
                 do {
@@ -420,7 +578,7 @@ class AppState: ObservableObject {
                 invitationCode: rsvp.invitationCode
             )
             guests.append(guest)
-            _ = dataStore.save(guests, to: Self.guestsFile)
+            saveCurrentGuests(guests)
 
             Task {
                 do {
@@ -472,7 +630,7 @@ class AppState: ObservableObject {
     }
 
     private func updateInvitationCode(from rsvp: GuestRSVP) {
-        var invitationCodes = dataStore.load([InvitationCode].self, from: Self.invitationCodesFile) ?? []
+        var invitationCodes = loadCurrentInvitationCodes()
         guard let index = invitationCodes.firstIndex(where: { $0.code == rsvp.invitationCode }) else { return }
 
         invitationCodes[index].guestName = rsvp.guestName
@@ -481,7 +639,7 @@ class AppState: ObservableObject {
         invitationCodes[index].dietaryNotes = rsvp.dietaryNotes
         invitationCodes[index].partySize = rsvp.partySize
         let updatedInvitation = invitationCodes[index]
-        _ = dataStore.save(invitationCodes, to: Self.invitationCodesFile)
+        saveCurrentInvitationCodes(invitationCodes)
 
         Task {
             do {
@@ -495,11 +653,11 @@ class AppState: ObservableObject {
     }
 
     func setGuestCheckIn(for guestID: UUID, checkedIn: Bool) {
-        var guests = dataStore.load([Guest].self, from: Self.guestsFile) ?? []
+        var guests = loadCurrentGuests()
         guard let index = guests.firstIndex(where: { $0.id == guestID }) else { return }
 
         guests[index].checkedInAt = checkedIn ? (guests[index].checkedInAt ?? Date()) : nil
-        _ = dataStore.save(guests, to: Self.guestsFile)
+        saveCurrentGuests(guests)
 
         Task {
             do {
@@ -552,7 +710,10 @@ class AppState: ObservableObject {
             }
         }
 
-        if let savedDetails = dataStore.load(WeddingDetails.self, from: Self.weddingDetailsFile) {
+        if let activeWeddingId,
+           let savedDetails = dataStore.load(WeddingDetails.self, from: weddingDetailsFileName(for: activeWeddingId)) {
+            self.weddingDetails = savedDetails
+        } else if let savedDetails = dataStore.load(WeddingDetails.self, from: Self.weddingDetailsFile) {
             self.weddingDetails = savedDetails
         }
     }
@@ -599,9 +760,9 @@ class AppState: ObservableObject {
             self.weddingDetails = wedding
         }
 
-        _ = dataStore.save(guests, to: Self.guestsFile)
-        _ = dataStore.save(budget, to: Self.budgetFile)
-        _ = dataStore.save(vendors, to: Self.vendorsFile)
+        saveCurrentGuests(guests)
+        saveCurrentBudget(budget)
+        saveCurrentVendors(vendors)
         registerWeddingMembership(
             weddingId: weddingId,
             role: .coplanner,
@@ -656,7 +817,8 @@ class AppState: ObservableObject {
 
     func updateCurrentWeddingMembership(with details: WeddingDetails) {
         guard let weddingId else { return }
-        let role: WeddingRole = isCoPlanner ? .coplanner : .host
+        let role = weddingMemberships.first(where: { $0.weddingId == weddingId })?.role
+            ?? (isCoPlanner ? .coplanner : .host)
         registerWeddingMembership(weddingId: weddingId, role: role, details: details)
     }
 
@@ -704,20 +866,18 @@ class AppState: ObservableObject {
 
     private func cachedInvitation(for code: String) -> InvitationCode? {
         let cleanCode = normalizeInvitationCode(code)
-        guard let invitationCodes = dataStore.load([InvitationCode].self, from: Self.invitationCodesFile) else {
-            return nil
-        }
+        let invitationCodes = loadCurrentInvitationCodes()
         return invitationCodes.first(where: { $0.code == cleanCode })
     }
 
     private func cacheInvitation(_ invitation: InvitationCode) {
-        var invitationCodes = dataStore.load([InvitationCode].self, from: Self.invitationCodesFile) ?? []
+        var invitationCodes = loadCurrentInvitationCodes()
         if let index = invitationCodes.firstIndex(where: { $0.code == invitation.code }) {
             invitationCodes[index] = invitation
         } else {
             invitationCodes.append(invitation)
         }
-        _ = dataStore.save(invitationCodes, to: Self.invitationCodesFile)
+        saveCurrentInvitationCodes(invitationCodes)
     }
 
     private func hydrateGuestRSVP(from invitation: InvitationCode) {

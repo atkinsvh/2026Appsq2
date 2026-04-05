@@ -75,11 +75,14 @@ struct TimelineView: View {
             .onAppear {
                 loadTimeline()
             }
+            .onChange(of: appState.weddingId) { _, _ in
+                loadTimeline()
+            }
         }
     }
 
     private func loadTimeline() {
-        items = DataStore.shared.load([TimelineItem].self, from: "timeline.json") ?? []
+        items = appState.loadCurrentTimeline()
         if items.isEmpty && !appState.weddingDetails.coupleNames.isEmpty {
             generateTimeline()
         }
@@ -87,7 +90,7 @@ struct TimelineView: View {
 
     // BUG-10 FIX: was `_ = _ = DataStore.shared.save(...)` — redundant double discard
     private func saveTimeline() {
-        _ = DataStore.shared.save(items, to: "timeline.json")
+        appState.saveCurrentTimeline(items)
     }
 
     private func updateItem(_ item: TimelineItem) {
