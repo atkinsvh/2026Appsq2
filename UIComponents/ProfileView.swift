@@ -245,9 +245,9 @@ struct ProfileView: View {
     }
     
     private func exportData() {
-        let guests = DataStore.shared.load([Guest].self, from: "guests.json") ?? []
-        let vendors = DataStore.shared.load([Vendor].self, from: "vendors.json") ?? []
-        let categories = DataStore.shared.load([BudgetCategory].self, from: "budget_categories.json") ?? []
+        let guests = appState.loadGuestsFromStorage()
+        let vendors = appState.loadVendorsFromStorage()
+        let categories = appState.loadBudgetFromStorage()
         let timelineItems = DataStore.shared.load([TimelineItem].self, from: "timeline.json") ?? []
         
         let exportData: [String: Any] = [
@@ -285,7 +285,7 @@ struct ProfileView: View {
     }
     
     private func exportGuestListCSV() {
-        let guests = DataStore.shared.load([Guest].self, from: "guests.json") ?? []
+        let guests = appState.loadGuestsFromStorage()
         let csvContent = guests.generateCSV()
         
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("GuestList.csv")

@@ -99,7 +99,7 @@ class AppState: ObservableObject {
     @Published var tooltipsDismissed: Set<String> = []
     @Published var weddingDetails: WeddingDetails = WeddingDetails(coupleNames: "", date: Date(), location: "") {
         didSet {
-            _ = dataStore.save(weddingDetails, to: Self.weddingDetailsFile)
+            saveWeddingDetailsToStorage(weddingDetails)
         }
     }
 
@@ -127,6 +127,7 @@ class AppState: ObservableObject {
     @Published var weddingId: UUID? {
         didSet {
             UserDefaults.standard.set(weddingId?.uuidString, forKey: Self.weddingIdKey)
+            hydrateActiveWeddingFromStorage()
         }
     }
     @Published var userId: UUID {
@@ -138,6 +139,27 @@ class AppState: ObservableObject {
 
     private var activeWeddingId: UUID? {
         weddingId ?? guestWeddingId
+    }
+
+    var selectedWeddingContext: WeddingSummary? {
+        guard let activeWeddingId else { return nil }
+        return weddingMemberships.first(where: { $0.weddingId == activeWeddingId })
+    }
+
+    private var scopedWeddingDetailsFile: String {
+        storageFileName(baseFile: Self.weddingDetailsFile, weddingId: weddingId)
+    }
+
+    private var scopedGuestsFile: String {
+        storageFileName(baseFile: Self.guestsFile, weddingId: activeWeddingId)
+    }
+
+    private var scopedBudgetFile: String {
+        storageFileName(baseFile: Self.budgetFile, weddingId: weddingId)
+    }
+
+    private var scopedVendorsFile: String {
+        storageFileName(baseFile: Self.vendorsFile, weddingId: weddingId)
     }
 
     init() {
@@ -185,7 +207,7 @@ class AppState: ObservableObject {
                 self.weddingDetails = cloudWedding
             }
 
-            var localGuests = dataStore.load([Guest].self, from: Self.guestsFile) ?? []
+            var localGuests = loadGuestsFromStorage()
             for cloudGuest in cloudGuests {
                 if let index = localGuests.firstIndex(where: { $0.id == cloudGuest.id }) {
                     localGuests[index] = cloudGuest
@@ -200,9 +222,9 @@ class AppState: ObservableObject {
                 mergePublicRSVPs(publicRSVPs, into: &localGuests)
             }
 
-            _ = dataStore.save(localGuests, to: Self.guestsFile)
-            _ = dataStore.save(cloudBudget, to: Self.budgetFile)
-            _ = dataStore.save(cloudVendors, to: Self.vendorsFile)
+            saveGuestsToStorage(localGuests)
+            saveBudgetToStorage(cloudBudget)
+            saveVendorsToStorage(cloudVendors)
             cloudKitSync.lastSyncDate = Date()
             cloudKitSync.syncError = nil
 
@@ -230,7 +252,7 @@ class AppState: ObservableObject {
     }
 
     func bootstrap() async {
-        if let details = dataStore.load(WeddingDetails.self, from: Self.weddingDetailsFile) {
+        if let details = loadWeddingDetailsFromStorage() {
             self.weddingDetails = details
         }
         await flushPendingGuestSyncOperations()
@@ -356,7 +378,7 @@ class AppState: ObservableObject {
     }
 
     private func updateGuest(from rsvp: GuestRSVP) {
-        var guests = dataStore.load([Guest].self, from: Self.guestsFile) ?? []
+        var guests = loadGuestsFromStorage()
 
         if let index = guests.firstIndex(where: {
             let hasMatchingCode = !$0.invitationCode.orEmpty.isEmpty && $0.invitationCode == rsvp.invitationCode
@@ -368,7 +390,7 @@ class AppState: ObservableObject {
             guests[index].dietaryNotes = rsvp.dietaryNotes
             guests[index].partySize = rsvp.partySize
             guests[index].invitationCode = rsvp.invitationCode
-            _ = dataStore.save(guests, to: Self.guestsFile)
+            saveGuestsToStorage(guests)
 
             Task {
                 do {
@@ -389,7 +411,7 @@ class AppState: ObservableObject {
                 invitationCode: rsvp.invitationCode
             )
             guests.append(guest)
-            _ = dataStore.save(guests, to: Self.guestsFile)
+            saveGuestsToStorage(guests)
 
             Task {
                 do {
@@ -464,11 +486,11 @@ class AppState: ObservableObject {
     }
 
     func setGuestCheckIn(for guestID: UUID, checkedIn: Bool) {
-        var guests = dataStore.load([Guest].self, from: Self.guestsFile) ?? []
+        var guests = loadGuestsFromStorage()
         guard let index = guests.firstIndex(where: { $0.id == guestID }) else { return }
 
         guests[index].checkedInAt = checkedIn ? (guests[index].checkedInAt ?? Date()) : nil
-        _ = dataStore.save(guests, to: Self.guestsFile)
+        saveGuestsToStorage(guests)
 
         Task {
             do {
@@ -517,7 +539,7 @@ class AppState: ObservableObject {
             }
         }
 
-        if let savedDetails = dataStore.load(WeddingDetails.self, from: Self.weddingDetailsFile) {
+        if let savedDetails = loadWeddingDetailsFromStorage() {
             self.weddingDetails = savedDetails
         }
     }
@@ -564,9 +586,9 @@ class AppState: ObservableObject {
             self.weddingDetails = wedding
         }
 
-        _ = dataStore.save(guests, to: Self.guestsFile)
-        _ = dataStore.save(budget, to: Self.budgetFile)
-        _ = dataStore.save(vendors, to: Self.vendorsFile)
+        saveGuestsToStorage(guests)
+        saveBudgetToStorage(budget)
+        saveVendorsToStorage(vendors)
         registerWeddingMembership(
             weddingId: weddingId,
             role: .coplanner,
@@ -579,13 +601,11 @@ class AppState: ObservableObject {
     // MARK: - User <> Wedding Memberships
 
     func fetchWeddingsForCurrentUser() {
-        APIClient.shared.fetchWeddings(for: userId) { [weak self] weddings in
-            guard let self else { return }
-            Task { @MainActor in
-                self.weddingMemberships = weddings
-                if self.weddingId == nil, let first = weddings.first {
-                    await self.switchWedding(to: first.weddingId)
-                }
+        Task {
+            let weddings = await APIClient.shared.fetchWeddings(for: userId)
+            self.weddingMemberships = weddings
+            if self.weddingId == nil, let first = weddings.first {
+                await self.switchWedding(to: first.weddingId)
             }
         }
     }
@@ -633,6 +653,41 @@ class AppState: ObservableObject {
         await syncFromCloudKit()
     }
 
+    func loadGuestsFromStorage() -> [Guest] {
+        dataStore.load([Guest].self, from: scopedGuestsFile) ?? dataStore.load([Guest].self, from: Self.guestsFile) ?? []
+    }
+
+    func saveGuestsToStorage(_ guests: [Guest]) {
+        _ = dataStore.save(guests, to: scopedGuestsFile)
+    }
+
+    func loadBudgetFromStorage() -> [BudgetCategory] {
+        dataStore.load([BudgetCategory].self, from: scopedBudgetFile)
+        ?? dataStore.load([BudgetCategory].self, from: "budget.json")
+        ?? dataStore.load([BudgetCategory].self, from: Self.budgetFile)
+        ?? []
+    }
+
+    func saveBudgetToStorage(_ categories: [BudgetCategory]) {
+        _ = dataStore.save(categories, to: scopedBudgetFile)
+    }
+
+    func loadVendorsFromStorage() -> [Vendor] {
+        dataStore.load([Vendor].self, from: scopedVendorsFile) ?? dataStore.load([Vendor].self, from: Self.vendorsFile) ?? []
+    }
+
+    func saveVendorsToStorage(_ vendors: [Vendor]) {
+        _ = dataStore.save(vendors, to: scopedVendorsFile)
+    }
+
+    func loadWeddingDetailsFromStorage() -> WeddingDetails? {
+        dataStore.load(WeddingDetails.self, from: scopedWeddingDetailsFile) ?? dataStore.load(WeddingDetails.self, from: Self.weddingDetailsFile)
+    }
+
+    func saveWeddingDetailsToStorage(_ details: WeddingDetails) {
+        _ = dataStore.save(details, to: scopedWeddingDetailsFile)
+    }
+
     private func membershipFileName(for userId: UUID) -> String {
         "user_wedding_memberships_\(userId.uuidString.lowercased()).json"
     }
@@ -663,6 +718,21 @@ class AppState: ObservableObject {
 
     func refreshFromCloudKit() async {
         await syncFromCloudKit()
+    }
+
+    private func hydrateActiveWeddingFromStorage() {
+        guard weddingId != nil else { return }
+        if let stored = loadWeddingDetailsFromStorage() {
+            weddingDetails = stored
+        }
+    }
+
+    private func storageFileName(baseFile: String, weddingId: UUID?) -> String {
+        guard let weddingId else { return baseFile }
+        let fileURL = URL(fileURLWithPath: baseFile)
+        let stem = fileURL.deletingPathExtension().lastPathComponent
+        let ext = fileURL.pathExtension.isEmpty ? "json" : fileURL.pathExtension
+        return "\(stem)_\(weddingId.uuidString.lowercased()).\(ext)"
     }
 
     // MARK: - Guest Cache + Pending Sync

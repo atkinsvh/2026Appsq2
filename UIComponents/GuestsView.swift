@@ -244,9 +244,9 @@ struct GuestsView: View {
     
     private func generateInvitationCode(for guest: Guest, partySize: Int, phoneNumber: String) {
         let code = inviteCode.isEmpty ? generateNewInviteCode() : inviteCode
-        let weddingId = appState.weddingId ?? UUID()
-        if appState.weddingId == nil {
-            appState.weddingId = weddingId
+        guard let weddingId = appState.weddingId else {
+            print("Cannot generate invitation code without a selected wedding.")
+            return
         }
         
         var updatedGuest = guest
@@ -299,7 +299,7 @@ struct GuestsView: View {
     }
     
     private func loadGuests() {
-        var loadedGuests = DataStore.shared.load([Guest].self, from: "guests.json") ?? []
+        var loadedGuests = appState.loadGuestsFromStorage()
         let invitationCodes = loadInvitationCodes() ?? []
         
         for index in loadedGuests.indices {
@@ -338,7 +338,7 @@ struct GuestsView: View {
     }
     
     private func saveGuests() {
-        _ = DataStore.shared.save(guests, to: "guests.json")
+        appState.saveGuestsToStorage(guests)
     }
     
     private func deleteGuests(at offsets: IndexSet) {
@@ -674,7 +674,7 @@ struct GuestDetailView: View {
         .navigationTitle("Guest Details")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            guests = DataStore.shared.load([Guest].self, from: "guests.json") ?? []
+            guests = appState.loadGuestsFromStorage()
         }
         .onChange(of: guest) { _, _ in
             saveGuest()
@@ -687,7 +687,7 @@ struct GuestDetailView: View {
         } else {
             guests.append(guest)
         }
-        _ = DataStore.shared.save(guests, to: "guests.json")
+        appState.saveGuestsToStorage(guests)
         Task {
             do {
                 try await appState.saveGuestToCloud(guest)

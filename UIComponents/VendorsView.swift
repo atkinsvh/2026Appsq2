@@ -89,23 +89,19 @@ struct VendorsView: View {
     }
     
     private func loadVendors() {
-        vendors = DataStore.shared.load([Vendor].self, from: "vendors.json") ?? []
+        vendors = appState.loadVendorsFromStorage()
     }
     
     private func saveVendors() {
-        _ = _ = DataStore.shared.save(vendors, to: "vendors.json")
+        appState.saveVendorsToStorage(vendors)
         
         // Sync to CloudKit
-        if let weddingId = appState.weddingId {
-            Task {
-                do {
-                    try await appState.cloudKitSync.saveVendors(vendors, weddingId: weddingId)
-                } catch {
-                    print("CloudKit: Failed to save vendors: \(error)")
-                }
+        Task {
+            do {
+                try await appState.saveVendorsToCloud(vendors)
+            } catch {
+                print("CloudKit: Failed to save vendors: \(error)")
             }
-        } else {
-            print("CloudKit: Warning - No weddingId when saving vendors. Complete onboarding first.")
         }
     }
     
