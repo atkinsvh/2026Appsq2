@@ -363,6 +363,7 @@ class AppState: ObservableObject {
 
     func exitGuestMode() {
         isGuestMode = false
+        isGuestAccessOnly = false
         currentInvitationCode = nil
         guestRSVP = nil
         guestWeddingId = nil
