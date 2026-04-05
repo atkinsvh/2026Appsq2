@@ -216,13 +216,35 @@ struct GuestsView: View {
             }
             .sheet(isPresented: $showingAddGuest) {
                 AddGuestView { newGuest in
-                    guests.append(newGuest)
+                    var guestWithCode = newGuest
+                    let newCode = generateNewInviteCode()
+                    guestWithCode.invitationCode = newCode
+                    
+                    guests.append(guestWithCode)
                     saveGuests()
+                    
+                    let newInvitation = InvitationCode(
+                        code: newCode,
+                        weddingId: appState.weddingId ?? UUID(),
+                        coupleNames: appState.weddingDetails.coupleNames,
+                        date: appState.weddingDetails.date,
+                        location: appState.weddingDetails.location,
+                        guestId: guestWithCode.id,
+                        guestName: guestWithCode.name,
+                        partySize: guestWithCode.partySize,
+                        phoneNumber: guestWithCode.phone
+                    )
+                    
+                    var currentCodes = loadInvitationCodes() ?? []
+                    currentCodes.append(newInvitation)
+                    saveInvitationCodes(currentCodes)
+                    
                     Task {
                         do {
-                            try await appState.saveGuestToCloud(newGuest)
+                            try await appState.saveInvitationCodeToCloud(newInvitation)
+                            try await appState.saveGuestToCloud(guestWithCode)
                         } catch {
-                            print("Failed to sync new guest to CloudKit: \(error)")
+                            print("Failed to sync new guest/code to CloudKit: \(error)")
                         }
                     }
                 }
@@ -271,7 +293,6 @@ struct GuestsView: View {
             coupleNames: appState.weddingDetails.coupleNames,
             date: appState.weddingDetails.date,
             location: appState.weddingDetails.location,
-            mealOptions: appState.weddingDetails.mealOptions,
             guestId: guest.id,
             guestName: guest.name,
             partySize: partySize,

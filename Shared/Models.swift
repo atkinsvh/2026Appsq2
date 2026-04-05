@@ -376,7 +376,6 @@ struct InvitationCode: Identifiable, Codable {
     let coupleNames: String
     let weddingDate: Date
     let weddingLocation: String
-    var mealOptions: [String]
     let createdAt: Date
     var guestId: UUID?
     var guestName: String?
@@ -402,7 +401,6 @@ struct InvitationCode: Identifiable, Codable {
          coupleNames: String,
          date: Date,
          location: String,
-         mealOptions: [String]? = nil,
          createdAt: Date = Date(),
          guestId: UUID? = nil,
          guestName: String? = nil,
@@ -414,12 +412,6 @@ struct InvitationCode: Identifiable, Codable {
         self.coupleNames = coupleNames
         self.weddingDate = date
         self.weddingLocation = location
-        self.mealOptions = {
-            guard let options = mealOptions, !options.isEmpty else {
-                return WeddingDetails.defaultMealOptions
-            }
-            return options
-        }()
         self.createdAt = createdAt
         self.guestId = guestId
         self.guestName = guestName

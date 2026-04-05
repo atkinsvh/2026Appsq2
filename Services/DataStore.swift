@@ -94,22 +94,20 @@ class DataStore: ObservableObject {
     }
 
     /// Load any Codable object from disk
-    func load<T: Codable>(_ type: T.Type, from fileName: String) -> T? {
-        let fileURL = documentsURL.appendingPathComponent(fileName)
-
+    nonisolated func load<T: Codable>(_ type: T.Type, from fileName: String) -> T? {
+        let fileURL = self.documentsURL.appendingPathComponent(fileName)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        
         do {
             let data = try Data(contentsOf: fileURL)
-            return try decoder.decode(type, from: data)
-        } catch {
-            // If file doesn't exist, that's okay - return nil
-            if !fileManager.fileExists(atPath: fileURL.path) {
+            let decoded = try JSONDecoder().decode(type, from: data)
+            return decoded
+            } catch {
+                print("Failed to load \(fileName): \(error)")
                 return nil
             }
-            print("⚠️ DataStore: Failed to load \(fileName): \(error)")
-            return loadFromBackup(type, fileName: fileName)
         }
-    }
-
+    
     /// Delete a file
     func delete(fileName: String) -> SaveResult {
         let fileURL = documentsURL.appendingPathComponent(fileName)

@@ -437,21 +437,6 @@ class CloudKitSyncService: ObservableObject {
         }
         return rsvps
     }
-
-    func fetchGuestRSVPs(for invitationCodes: [String]) async throws -> [GuestRSVP] {
-        var mergedByRecordKey: [String: GuestRSVP] = [:]
-        let normalizedCodes = Set(invitationCodes.map { InvitationCode.normalize($0) }.filter { !$0.isEmpty })
-
-        for code in normalizedCodes {
-            let rsvpsForCode = try await fetchGuestRSVPs(for: code)
-            for rsvp in rsvpsForCode {
-                let key = "\(InvitationCode.normalize(rsvp.invitationCode))::\(normalizedRecordKey(rsvp.guestName))"
-                mergedByRecordKey[key] = rsvp
-            }
-        }
-
-        return Array(mergedByRecordKey.values)
-    }
     
     /// Upsert guest RSVP - updates existing record or creates new one
     func upsertGuestRSVP(_ rsvp: GuestRSVP) async throws {
@@ -480,7 +465,6 @@ class CloudKitSyncService: ObservableObject {
         record["coupleNames"] = invitation.coupleNames
         record["weddingDate"] = invitation.weddingDate as CKRecordValue
         record["weddingLocation"] = invitation.weddingLocation
-        record["mealOptions"] = invitation.mealOptions as CKRecordValue
         record["createdAt"] = invitation.createdAt as CKRecordValue
         record["guestId"] = invitation.guestId?.uuidString
         record["guestName"] = invitation.guestName
@@ -533,7 +517,6 @@ class CloudKitSyncService: ObservableObject {
             coupleNames: coupleNames,
             date: weddingDate,
             location: weddingLocation,
-            mealOptions: record["mealOptions"] as? [String],
             createdAt: record["createdAt"] as? Date ?? Date(),
             guestId: {
                 guard let guestIdString = record["guestId"] as? String else { return nil }
